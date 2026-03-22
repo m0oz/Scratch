@@ -27,11 +27,15 @@ interface DetectorState {
   highFilter: BiquadFilterNode;
   rafId: number;
   hits: DetectedHit[];
-  startTime: number;
+  startTime: number;      // when recording actually begins (after count-in)
   prevLowEnergy: number;
   prevMidEnergy: number;
   prevHighEnergy: number;
+  lowSmooth: number;
+  midSmooth: number;
+  highSmooth: number;
   cooldown: number;
+  recording: boolean;     // only capture hits when true
   onHit?: (hit: DetectedHit) => void;
 }
 
@@ -45,64 +49,75 @@ function getEnergy(analyser: AnalyserNode): number {
   return sum / data.length;
 }
 
+// Request mic access and set up analysers, but don't record yet
 export async function startDetection(onHit?: (hit: DetectedHit) => void): Promise<void> {
   if (state) stopDetection();
 
   const ctx = getAudioContext();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
   const source = ctx.createMediaStreamSource(stream);
 
-  // Overall analyser for visualization
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 2048;
   source.connect(analyser);
 
-  // Low band (kick detection): < 250 Hz
+  // Low band (kick): < 300 Hz
   const lowFilter = ctx.createBiquadFilter();
   lowFilter.type = 'lowpass';
-  lowFilter.frequency.value = 250;
+  lowFilter.frequency.value = 300;
   const lowAnalyser = ctx.createAnalyser();
   lowAnalyser.fftSize = 1024;
   source.connect(lowFilter);
   lowFilter.connect(lowAnalyser);
 
-  // Mid band (snare detection): 250–4000 Hz
+  // Mid band (snare): 300–5000 Hz
   const midLow = ctx.createBiquadFilter();
   midLow.type = 'highpass';
-  midLow.frequency.value = 250;
+  midLow.frequency.value = 300;
   const midHigh = ctx.createBiquadFilter();
   midHigh.type = 'lowpass';
-  midHigh.frequency.value = 4000;
+  midHigh.frequency.value = 5000;
   const midAnalyser = ctx.createAnalyser();
   midAnalyser.fftSize = 1024;
   source.connect(midLow);
   midLow.connect(midHigh);
   midHigh.connect(midAnalyser);
-  const midFilter = midLow; // keep reference
+  const midFilter = midLow;
 
-  // High band (hat detection): > 4000 Hz
+  // High band (hat): > 5000 Hz
   const highFilter = ctx.createBiquadFilter();
   highFilter.type = 'highpass';
-  highFilter.frequency.value = 4000;
+  highFilter.frequency.value = 5000;
   const highAnalyser = ctx.createAnalyser();
   highAnalyser.fftSize = 1024;
   source.connect(highFilter);
   highFilter.connect(highAnalyser);
 
-  const hits: DetectedHit[] = [];
-  const startTime = ctx.currentTime;
-
   state = {
     stream, source, analyser,
     lowAnalyser, midAnalyser, highAnalyser,
     lowFilter, midFilter, highFilter,
-    rafId: 0, hits, startTime,
+    rafId: 0,
+    hits: [],
+    startTime: 0,
     prevLowEnergy: 0, prevMidEnergy: 0, prevHighEnergy: 0,
+    lowSmooth: 0, midSmooth: 0, highSmooth: 0,
     cooldown: 0,
+    recording: false,
     onHit,
   };
 
   detectLoop();
+}
+
+// Begin capturing hits — call after count-in finishes
+export function beginRecording() {
+  if (!state) return;
+  state.recording = true;
+  state.startTime = getAudioContext().currentTime;
+  state.hits = [];
 }
 
 function detectLoop() {
@@ -115,22 +130,26 @@ function detectLoop() {
   const midEnergy = getEnergy(state.midAnalyser);
   const highEnergy = getEnergy(state.highAnalyser);
 
-  // Onset detection thresholds (tuned for vocal beatboxing)
-  const THRESHOLD = 0.005;
-  const ONSET_RATIO = 3.0;
-  const COOLDOWN_MS = 60; // minimum ms between hits
+  // Running average for adaptive threshold
+  const SMOOTH = 0.92;
+  state.lowSmooth = state.lowSmooth * SMOOTH + lowEnergy * (1 - SMOOTH);
+  state.midSmooth = state.midSmooth * SMOOTH + midEnergy * (1 - SMOOTH);
+  state.highSmooth = state.highSmooth * SMOOTH + highEnergy * (1 - SMOOTH);
 
-  if (now > state.cooldown) {
-    const lowOnset = lowEnergy > THRESHOLD && lowEnergy > state.prevLowEnergy * ONSET_RATIO;
-    const midOnset = midEnergy > THRESHOLD && midEnergy > state.prevMidEnergy * ONSET_RATIO;
-    const highOnset = highEnergy > THRESHOLD && highEnergy > state.prevHighEnergy * ONSET_RATIO;
+  // Only detect when recording
+  if (state.recording && now > state.cooldown) {
+    const THRESHOLD = 0.003;
+    const ONSET_RATIO = 2.5; // how much above the running average
+
+    const lowOnset = lowEnergy > THRESHOLD && lowEnergy > state.lowSmooth * ONSET_RATIO;
+    const midOnset = midEnergy > THRESHOLD && midEnergy > state.midSmooth * ONSET_RATIO;
+    const highOnset = highEnergy > THRESHOLD * 0.5 && highEnergy > state.highSmooth * ONSET_RATIO;
 
     if (lowOnset || midOnset || highOnset) {
-      // Classify by which band has strongest onset
       let type: DetectedHit['type'] = 'hat';
-      const lowDelta = lowEnergy - state.prevLowEnergy;
-      const midDelta = midEnergy - state.prevMidEnergy;
-      const highDelta = highEnergy - state.prevHighEnergy;
+      const lowDelta = lowEnergy / Math.max(state.lowSmooth, 0.0001);
+      const midDelta = midEnergy / Math.max(state.midSmooth, 0.0001);
+      const highDelta = highEnergy / Math.max(state.highSmooth, 0.0001);
 
       if (lowDelta >= midDelta && lowDelta >= highDelta) {
         type = 'kick';
@@ -141,7 +160,7 @@ function detectLoop() {
       const hit: DetectedHit = { time: now - state.startTime, type };
       state.hits.push(hit);
       state.onHit?.(hit);
-      state.cooldown = now + COOLDOWN_MS / 1000;
+      state.cooldown = now + 0.08; // 80ms cooldown between hits
     }
   }
 
@@ -166,6 +185,10 @@ export function isDetecting(): boolean {
   return state !== null;
 }
 
+export function isRecording(): boolean {
+  return state?.recording ?? false;
+}
+
 export function getAnalyser(): AnalyserNode | null {
   return state?.analyser ?? null;
 }
@@ -184,7 +207,6 @@ export function quantizeHits(
   const hat = new Array(stepCount).fill(false);
 
   for (const hit of hits) {
-    // Wrap to pattern length
     const wrapped = hit.time % totalDuration;
     const step = Math.round(wrapped / secondsPerStep) % stepCount;
 

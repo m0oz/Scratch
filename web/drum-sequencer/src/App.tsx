@@ -5,7 +5,7 @@ import {
   type SoundCategory, type SoundDef, SOUND_CATALOG,
 } from './audioEngine';
 import { PRESETS, DEFAULT_TRACKS, type Track } from './patterns';
-import { startDetection, stopDetection, quantizeHits, isDetecting, getAnalyser, type DetectedHit } from './beatDetector';
+import { startDetection, beginRecording, stopDetection, quantizeHits, isDetecting, isRecording, getAnalyser, type DetectedHit } from './beatDetector';
 
 const SCHEDULE_AHEAD = 0.1;
 const LOOKAHEAD = 25;
@@ -156,42 +156,17 @@ export default function App() {
       }
     }
 
-    // Countdown 3-2-1
     setVocalizeHits([]);
-    for (let i = 3; i >= 1; i--) {
-      setVocalizeCountdown(i);
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    setVocalizeCountdown(0);
 
-    // Start detection with a metronome click
-    // Play 2 bars of metronome, recording the whole time
-    const secondsPerBeat = 60.0 / bpmRef.current;
-    const totalBeats = (stepCountRef.current / 4);
-    const totalDuration = totalBeats * secondsPerBeat;
-
-    // Play metronome clicks
-    const ctx = getAudioContext();
-    const startTime = ctx.currentTime;
-    for (let i = 0; i < totalBeats; i++) {
-      const t = startTime + i * secondsPerBeat;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.value = i % 4 === 0 ? 1200 : 800;
-      g.gain.setValueAtTime(0.15, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-      o.start(t); o.stop(t + 0.05);
-    }
-
+    // Request mic access and start analysers early (during countdown)
+    // so the running average has time to calibrate to ambient noise
     const hits: DetectedHit[] = [];
     await startDetection((hit) => {
       hits.push(hit);
       setVocalizeHits([...hits]);
     });
-    setVocalizeActive(true);
 
-    // Mic level animation
+    // Mic level animation (runs through count-in and recording)
     const animateMic = () => {
       const analyser = getAnalyser();
       if (analyser) {
@@ -205,10 +180,60 @@ export default function App() {
     };
     micAnimRef.current = requestAnimationFrame(animateMic);
 
-    // Auto-stop after the pattern duration + a small buffer
+    const secondsPerBeat = 60.0 / bpmRef.current;
+    const ctx = getAudioContext();
+
+    // ── Phase 1: Count-in (4 beats with metronome) ────────
+    // Detector is running but NOT recording, so it calibrates its
+    // noise floor from ambient + metronome bleed.
+    setVocalizeCountdown(4);
+    const countInStart = ctx.currentTime + 0.1; // tiny buffer
+    for (let i = 0; i < 4; i++) {
+      const t = countInStart + i * secondsPerBeat;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = i === 0 ? 1400 : 900;
+      g.gain.setValueAtTime(0.2, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      o.start(t); o.stop(t + 0.06);
+    }
+
+    // Tick down the countdown display beat-by-beat
+    for (let i = 4; i >= 1; i--) {
+      setVocalizeCountdown(i);
+      await new Promise(r => setTimeout(r, secondsPerBeat * 1000));
+    }
+    setVocalizeCountdown(0);
+
+    // ── Phase 2: Recording (2 bars with metronome) ────────
+    setVocalizeActive(true);
+
+    // Always record exactly 2 bars worth of steps
+    const recordSteps = stepCountRef.current;
+    const recordBeats = recordSteps / 4;
+    const recordDuration = recordBeats * secondsPerBeat;
+
+    // Start capturing hits NOW
+    beginRecording();
+
+    // Schedule metronome clicks for the recording period
+    const recStart = ctx.currentTime;
+    for (let i = 0; i < recordBeats; i++) {
+      const t = recStart + i * secondsPerBeat;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = i % 4 === 0 ? 1400 : 900;
+      g.gain.setValueAtTime(0.12, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      o.start(t); o.stop(t + 0.05);
+    }
+
+    // Auto-stop after recording duration + generous buffer
     setTimeout(() => {
       if (isDetecting()) finishVocalize();
-    }, (totalDuration + 0.5) * 1000);
+    }, (recordDuration + 1.0) * 1000);
   }, []);
 
   const finishVocalize = useCallback(() => {
@@ -316,18 +341,18 @@ export default function App() {
       {/* Vocalize feedback */}
       {(vocalizeActive || vocalizeCountdown >= 0) && (
         <div style={styles.vocalizeBar}>
+          <div style={{
+            ...styles.micMeter,
+            width: `${Math.min(100, micLevel * 600)}%`,
+          }} />
           {vocalizeCountdown >= 1 ? (
-            <span style={styles.vocalizeText}>Get ready... {vocalizeCountdown}</span>
+            <span style={styles.vocalizeText}>
+              Count-in... {vocalizeCountdown}
+            </span>
           ) : vocalizeActive ? (
-            <>
-              <div style={{
-                ...styles.micMeter,
-                width: `${Math.min(100, micLevel * 800)}%`,
-              }} />
-              <span style={styles.vocalizeText}>
-                Listening — beatbox your pattern! ({vocalizeHits.length} hits detected)
-              </span>
-            </>
+            <span style={styles.vocalizeText}>
+              Recording — beatbox your pattern! ({vocalizeHits.length} hits)
+            </span>
           ) : null}
         </div>
       )}
