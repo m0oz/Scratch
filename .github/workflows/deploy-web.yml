@@ -80,7 +80,7 @@ jobs:
 
           if projects:
               links = "\n".join(
-                  f'      <li><a href="/{repo_name}/web/{p}/">{p}</a></li>'
+                  f'      <li><a href="/{repo_name}/{p}/">{p}</a></li>'
                   for p in projects
               )
           else:
