@@ -47,7 +47,7 @@ jobs:
               (
                 cd "$dir"
                 npm install
-                VITE_BASE="/$repo_name/web/$name/" npm run build
+                VITE_BASE="/$repo_name/$name/" npm run build
               )
               if   [ -d "${dir}dist" ]; then cp -r "${dir}dist" "_site/$name"
               elif [ -d "${dir}out"  ]; then cp -r "${dir}out"  "_site/$name"
