@@ -186,9 +186,9 @@ export default function App() {
     // ── Phase 1: Count-in (4 beats with metronome) ────────
     // Detector is running but NOT recording, so it calibrates its
     // noise floor from ambient + metronome bleed.
-    setVocalizeCountdown(4);
+    const countInBeats = 4;
     const countInStart = ctx.currentTime + 0.1; // tiny buffer
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < countInBeats; i++) {
       const t = countInStart + i * secondsPerBeat;
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -199,19 +199,25 @@ export default function App() {
       o.start(t); o.stop(t + 0.06);
     }
 
-    // Tick down the countdown display beat-by-beat
-    for (let i = 4; i >= 1; i--) {
-      setVocalizeCountdown(i);
+    // Tick down the countdown display synced to the scheduled audio clicks.
+    // Wait for the initial buffer, then update the display on each beat.
+    const countInEnd = countInStart + countInBeats * secondsPerBeat;
+    setVocalizeCountdown(countInBeats);
+    await new Promise(r => setTimeout(r, (countInStart - ctx.currentTime) * 1000));
+    for (let i = countInBeats - 1; i >= 1; i--) {
       await new Promise(r => setTimeout(r, secondsPerBeat * 1000));
+      setVocalizeCountdown(i);
     }
+    // Wait for the final beat to finish before moving to recording
+    const remaining = (countInEnd - ctx.currentTime) * 1000;
+    if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
     setVocalizeCountdown(0);
 
     // ── Phase 2: Recording (2 bars with metronome) ────────
     setVocalizeActive(true);
 
-    // Always record exactly 2 bars worth of steps
-    const recordSteps = stepCountRef.current;
-    const recordBeats = recordSteps / 4;
+    // Always record exactly 2 bars
+    const recordBeats = (stepCountRef.current / 4) * 2;
     const recordDuration = recordBeats * secondsPerBeat;
 
     // Start capturing hits NOW
