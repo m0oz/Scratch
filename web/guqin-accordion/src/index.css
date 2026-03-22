@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.abcjs-container svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
