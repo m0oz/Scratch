@@ -77,12 +77,13 @@ export default function PlayerControls({
     const beatsPerBar = piece.timeSignature === '3/4' ? 3 : 4
     const events = piece.playbackNotes.map(([note, startBeat, durBeats]) => ({
       time:     beatToToneTime(startBeat, beatsPerBar),
-      note,
+      note:     note as string | string[],
       duration: beatsToDuration(durBeats),
     }))
 
-    const part = new Tone.Part<{ time: string; note: string; duration: string }>(
-      (time, ev) => { synthRef.current?.triggerAttackRelease(ev.note, ev.duration, time) },
+    const part = new Tone.Part<{ time: string; note: string | string[]; duration: string }>(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (time, ev) => { synthRef.current?.triggerAttackRelease(ev.note as any, ev.duration, time) },
       events,
     )
     part.start(0)
