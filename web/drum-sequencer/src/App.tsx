@@ -19,7 +19,11 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
   const [swing, setSwing] = useState(0);
-  const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
+
+  // UI popups
+  const [trackPopup, setTrackPopup] = useState<number | null>(null);
+  const [showTempoSlider, setShowTempoSlider] = useState(false);
+  const [showSwingSlider, setShowSwingSlider] = useState(false);
 
   // Vocalize mode
   const [vocalizeActive, setVocalizeActive] = useState(false);
@@ -132,12 +136,30 @@ export default function App() {
     setBpm(preset.bpm);
     setStepCount(preset.steps);
     setCurrentStep(-1);
-    setExpandedTrack(null);
+    setTrackPopup(null);
   }, []);
 
   const clearAll = useCallback(() => {
     setTracks(DEFAULT_TRACKS(stepCount));
-    setExpandedTrack(null);
+    setTrackPopup(null);
+  }, [stepCount]);
+
+  // ── Bars toggle ──────────────────────────────────────────
+
+  const toggleBars = useCallback(() => {
+    const newSteps = stepCount === 16 ? 32 : 16;
+    setStepCount(newSteps);
+    setTracks(prev => prev.map(tr => {
+      if (newSteps > tr.steps.length) {
+        // Extend: copy bar 1 into bar 2
+        const extended = [...tr.steps];
+        while (extended.length < newSteps) extended.push(tr.steps[extended.length - tr.steps.length] ?? false);
+        return { ...tr, steps: extended };
+      } else {
+        // Truncate to 1 bar
+        return { ...tr, steps: tr.steps.slice(0, newSteps) };
+      }
+    }));
   }, [stepCount]);
 
   // ── Vocalize mode ──────────────────────────────────────
@@ -270,11 +292,18 @@ export default function App() {
     return def?.category ?? 'perc';
   }
 
+  function getSoundLabel(soundId: string): string {
+    const def = SOUND_CATALOG.find(s => s.id === soundId);
+    return def?.label ?? soundId;
+  }
+
   function groupedSounds(): [SoundCategory, SoundDef[]][] {
     return Object.entries(SOUNDS_BY_CATEGORY) as [SoundCategory, SoundDef[]][];
   }
 
   // ── Render ─────────────────────────────────────────────
+
+  const popupTrack = trackPopup !== null ? tracks[trackPopup] : null;
 
   return (
     <div style={styles.container}>
@@ -285,37 +314,48 @@ export default function App() {
           <div style={styles.brandSub}>RHYTHM COMPOSER</div>
         </div>
         <div style={styles.displaySection}>
-          <div style={styles.display}>
+          <div
+            style={{ ...styles.display, cursor: 'pointer', position: 'relative' as const }}
+            onClick={() => { setShowTempoSlider(!showTempoSlider); setShowSwingSlider(false); }}
+          >
             <div style={styles.displayLabel}>TEMPO</div>
             <div style={styles.displayValue}>{bpm}</div>
+            {showTempoSlider && (
+              <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
+                <input type="range" min="60" max="200" value={bpm}
+                  onChange={e => setBpm(Number(e.target.value))} style={styles.popupSlider} />
+              </div>
+            )}
           </div>
           <div style={styles.display}>
             <div style={styles.displayLabel}>STEP</div>
             <div style={styles.displayValue}>{currentStep >= 0 ? currentStep + 1 : '--'}</div>
           </div>
-          <div style={styles.display}>
+          <div
+            style={{ ...styles.display, cursor: 'pointer' }}
+            onClick={toggleBars}
+          >
             <div style={styles.displayLabel}>BARS</div>
             <div style={styles.displayValue}>{stepCount / 16}</div>
           </div>
-          <div style={styles.display}>
+          <div
+            style={{ ...styles.display, cursor: 'pointer', position: 'relative' as const }}
+            onClick={() => { setShowSwingSlider(!showSwingSlider); setShowTempoSlider(false); }}
+          >
             <div style={styles.displayLabel}>SWING</div>
             <div style={styles.displayValue}>{Math.round(swing * 100)}%</div>
+            {showSwingSlider && (
+              <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
+                <input type="range" min="0" max="100" value={swing * 100}
+                  onChange={e => setSwing(Number(e.target.value) / 100)} style={styles.popupSlider} />
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls — no sliders, just buttons */}
       <div style={styles.controls}>
-        <div style={styles.controlGroup}>
-          <label style={styles.knobLabel}>TEMPO</label>
-          <input type="range" min="60" max="200" value={bpm}
-            onChange={e => setBpm(Number(e.target.value))} style={styles.slider} />
-        </div>
-        <div style={styles.controlGroup}>
-          <label style={styles.knobLabel}>SWING</label>
-          <input type="range" min="0" max="100" value={swing * 100}
-            onChange={e => setSwing(Number(e.target.value) / 100)} style={styles.slider} />
-        </div>
         <button onClick={handlePlay}
           style={{
             ...styles.playButton,
@@ -373,7 +413,7 @@ export default function App() {
 
       {/* Step LEDs */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: 200, flexShrink: 0 }} />
+        <div style={{ width: 120, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepLed,
@@ -386,7 +426,7 @@ export default function App() {
 
       {/* Beat numbers */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: 200, flexShrink: 0 }} />
+        <div style={{ width: 120, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepNumber,
@@ -401,114 +441,125 @@ export default function App() {
 
       {/* Sequencer grid */}
       <div style={styles.grid}>
-        {tracks.map((track, trackIdx) => {
-          const isExpanded = expandedTrack === trackIdx;
-          const currentCategory = getSoundCategory(track.soundId);
-
-          return (
-            <div key={trackIdx}>
-              <div style={styles.trackRow}>
-                <div style={styles.trackControls}>
-                  <button
-                    style={{ ...styles.trackLabel, borderLeftColor: track.color }}
-                    onClick={() => handlePreview(track.soundId, track.volume, track.decay)}
-                  >
-                    {track.name}
-                  </button>
-                  <button
-                    style={{
-                      ...styles.expandBtn,
-                      color: isExpanded ? '#ff3b30' : '#666',
-                    }}
-                    onClick={() => setExpandedTrack(isExpanded ? null : trackIdx)}
-                  >
-                    {isExpanded ? '▾' : '▸'}
-                  </button>
-                  {/* Mini vol/decay */}
-                  <input type="range" min="0" max="100" value={track.volume * 100}
-                    onChange={e => changeVolume(trackIdx, Number(e.target.value) / 100)}
-                    style={styles.miniSlider} title={`Vol ${Math.round(track.volume * 100)}%`} />
-                  <input type="range" min="20" max="200" value={track.decay * 100}
-                    onChange={e => changeDecay(trackIdx, Number(e.target.value) / 100)}
-                    style={styles.miniSlider} title={`Decay ${Math.round(track.decay * 100)}%`} />
-                </div>
-                <div style={styles.stepsRow}>
-                  {track.steps.map((active, stepIdx) => (
-                    <button
-                      key={stepIdx}
-                      onClick={() => toggleStep(trackIdx, stepIdx)}
-                      style={{
-                        ...styles.stepButton,
-                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
-                        background: active
-                          ? track.color
-                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
-                        borderColor: stepIdx === currentStep ? '#fff' : active ? track.color : '#3a3a3a',
-                        boxShadow: active
-                          ? `0 0 6px ${track.color}40`
-                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
-                      }}
-                    />
-                  ))}
-                </div>
+        {tracks.map((track, trackIdx) => (
+          <div key={trackIdx}>
+            <div style={styles.trackRow}>
+              <div style={styles.trackControls}>
+                <button
+                  style={{ ...styles.trackLabel, borderLeftColor: track.color }}
+                  onClick={() => {
+                    handlePreview(track.soundId, track.volume, track.decay);
+                    setTrackPopup(trackPopup === trackIdx ? null : trackIdx);
+                    setShowTempoSlider(false);
+                    setShowSwingSlider(false);
+                  }}
+                >
+                  {track.name}
+                  <span style={{ color: '#666', fontSize: 8, marginLeft: 4 }}>
+                    {getSoundLabel(track.soundId)}
+                  </span>
+                </button>
               </div>
-
-              {/* Expanded sound picker */}
-              {isExpanded && (
-                <div style={styles.soundPicker}>
-                  {groupedSounds().map(([cat, sounds]) => (
-                    <div key={cat} style={styles.soundGroup}>
-                      <div style={{
-                        ...styles.soundGroupLabel,
-                        color: currentCategory === cat ? '#ff3b30' : '#555',
-                      }}>
-                        {CATEGORY_LABELS[cat]}
-                      </div>
-                      <div style={styles.soundChips}>
-                        {sounds.map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => {
-                              changeSound(trackIdx, s.id);
-                              handlePreview(s.id, track.volume, track.decay);
-                            }}
-                            style={{
-                              ...styles.soundChip,
-                              background: track.soundId === s.id ? track.color : '#2a2a2a',
-                              color: track.soundId === s.id ? '#fff' : '#aaa',
-                              borderColor: track.soundId === s.id ? track.color : '#3a3a3a',
-                            }}
-                          >
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  <div style={styles.channelControls}>
-                    <div style={styles.channelControl}>
-                      <label style={styles.channelLabel}>VOLUME</label>
-                      <input type="range" min="0" max="100" value={track.volume * 100}
-                        onChange={e => changeVolume(trackIdx, Number(e.target.value) / 100)}
-                        style={styles.channelSlider} />
-                      <span style={styles.channelValue}>{Math.round(track.volume * 100)}%</span>
-                    </div>
-                    <div style={styles.channelControl}>
-                      <label style={styles.channelLabel}>DECAY</label>
-                      <input type="range" min="20" max="200" value={track.decay * 100}
-                        onChange={e => changeDecay(trackIdx, Number(e.target.value) / 100)}
-                        style={styles.channelSlider} />
-                      <span style={styles.channelValue}>{Math.round(track.decay * 100)}%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div style={styles.stepsRow}>
+                {track.steps.map((active, stepIdx) => (
+                  <button
+                    key={stepIdx}
+                    onClick={() => toggleStep(trackIdx, stepIdx)}
+                    style={{
+                      ...styles.stepButton,
+                      ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                      background: active
+                        ? track.color
+                        : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                      borderColor: stepIdx === currentStep ? '#fff' : active ? track.color : '#3a3a3a',
+                      boxShadow: active
+                        ? `0 0 6px ${track.color}40`
+                        : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       <div style={styles.bottomBar} />
+
+      {/* Track Sound Popup (overlay) */}
+      {trackPopup !== null && popupTrack && (
+        <div style={styles.overlay} onClick={() => setTrackPopup(null)}>
+          <div style={styles.popup} onClick={e => e.stopPropagation()}>
+            <div style={styles.popupHeader}>
+              <div style={styles.popupTitle}>
+                <span style={{ color: popupTrack.color, marginRight: 8 }}>●</span>
+                {popupTrack.name}
+              </div>
+              <button style={styles.popupClose} onClick={() => setTrackPopup(null)}>✕</button>
+            </div>
+
+            {/* Sound picker */}
+            <div style={styles.popupSection}>
+              {groupedSounds().map(([cat, sounds]) => (
+                <div key={cat} style={{ marginBottom: 10 }}>
+                  <div style={{
+                    ...styles.soundGroupLabel,
+                    color: getSoundCategory(popupTrack.soundId) === cat ? '#ff3b30' : '#555',
+                  }}>
+                    {CATEGORY_LABELS[cat]}
+                  </div>
+                  <div style={styles.soundChips}>
+                    {sounds.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          changeSound(trackPopup, s.id);
+                          handlePreview(s.id, popupTrack.volume, popupTrack.decay);
+                        }}
+                        style={{
+                          ...styles.soundChip,
+                          background: popupTrack.soundId === s.id ? popupTrack.color : '#2a2a2a',
+                          color: popupTrack.soundId === s.id ? '#fff' : '#aaa',
+                          borderColor: popupTrack.soundId === s.id ? popupTrack.color : '#3a3a3a',
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Controls */}
+            <div style={styles.popupControls}>
+              <div style={styles.popupControl}>
+                <label style={styles.popupControlLabel}>VOLUME</label>
+                <input type="range" min="0" max="100" value={popupTrack.volume * 100}
+                  onChange={e => changeVolume(trackPopup, Number(e.target.value) / 100)}
+                  style={styles.popupControlSlider} />
+                <span style={styles.popupControlValue}>{Math.round(popupTrack.volume * 100)}%</span>
+              </div>
+              <div style={styles.popupControl}>
+                <label style={styles.popupControlLabel}>DECAY</label>
+                <input type="range" min="20" max="200" value={popupTrack.decay * 100}
+                  onChange={e => changeDecay(trackPopup, Number(e.target.value) / 100)}
+                  style={styles.popupControlSlider} />
+                <span style={styles.popupControlValue}>{Math.round(popupTrack.decay * 100)}%</span>
+              </div>
+              <div style={styles.popupControl}>
+                <label style={styles.popupControlLabel}>PREVIEW</label>
+                <button
+                  style={styles.previewButton}
+                  onClick={() => handlePreview(popupTrack.soundId, popupTrack.volume, popupTrack.decay)}
+                >
+                  ▶ Play
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -548,20 +599,35 @@ const styles: Record<string, React.CSSProperties> = {
   display: {
     background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 6,
     padding: '8px 14px', textAlign: 'center' as const, minWidth: 60,
+    userSelect: 'none' as const,
   },
   displayLabel: { fontSize: 8, color: '#555', letterSpacing: 2, marginBottom: 4, fontWeight: 600 },
   displayValue: {
     fontSize: 18, color: '#ff3b30', fontFamily: MONO, fontWeight: 600,
     textShadow: '0 0 10px rgba(255, 59, 48, 0.4)',
   },
+  dropdownSlider: {
+    position: 'absolute' as const,
+    top: '100%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#2a2a2a',
+    border: '1px solid #444',
+    borderRadius: 8,
+    padding: '12px 16px',
+    zIndex: 100,
+    marginTop: 6,
+    minWidth: 160,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+  },
+  popupSlider: {
+    width: '100%', accentColor: '#ff3b30', cursor: 'pointer',
+  },
   controls: {
-    display: 'flex', gap: 12, alignItems: 'flex-end', padding: '14px 24px',
+    display: 'flex', gap: 12, alignItems: 'center', padding: '14px 24px',
     background: '#1e1e1e', borderLeft: '1px solid #333', borderRight: '1px solid #333',
     flexWrap: 'wrap' as const,
   },
-  controlGroup: { display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 100 },
-  knobLabel: { fontSize: 9, letterSpacing: 2, color: '#666', fontWeight: 600 },
-  slider: { width: '100%', accentColor: '#ff3b30', cursor: 'pointer' },
   playButton: {
     fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#fff',
     border: 'none', borderRadius: 8, padding: '12px 20px', cursor: 'pointer',
@@ -630,20 +696,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   trackRow: { display: 'flex', gap: 6, alignItems: 'center' },
   trackControls: {
-    width: 200, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
+    width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
   },
   trackLabel: {
     fontSize: 10, fontWeight: 700, color: '#ccc', letterSpacing: 0.5,
     fontFamily: FONT, background: 'none', border: 'none', borderLeft: '3px solid',
     cursor: 'pointer', textAlign: 'left' as const, padding: '3px 3px 3px 6px',
-    whiteSpace: 'nowrap' as const, minWidth: 50,
-  },
-  expandBtn: {
-    background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-    fontSize: 10, fontFamily: FONT, fontWeight: 700,
-  },
-  miniSlider: {
-    width: 40, accentColor: '#666', cursor: 'pointer', height: 12,
+    whiteSpace: 'nowrap' as const, overflow: 'hidden',
+    display: 'flex', alignItems: 'center', width: '100%',
   },
   stepsRow: { display: 'flex', gap: 3, flex: 1 },
   stepButton: {
@@ -651,14 +711,46 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer', transition: 'background 0.05s, border-color 0.05s',
     padding: 0, maxHeight: 26, minWidth: 0,
   },
-  // Expanded sound picker
-  soundPicker: {
-    padding: '10px 10px 10px 210px',
-    background: '#151515',
-    borderTop: '1px solid #2a2a2a',
-    marginBottom: 4,
+  // Popup overlay
+  overlay: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(4px)',
   },
-  soundGroup: { marginBottom: 8 },
+  popup: {
+    background: '#1e1e1e',
+    border: '1px solid #444',
+    borderRadius: 12,
+    padding: '20px',
+    width: '90%',
+    maxWidth: 520,
+    maxHeight: '80vh',
+    overflowY: 'auto' as const,
+    boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+  },
+  popupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottom: '1px solid #333',
+  },
+  popupTitle: {
+    fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: 1,
+  },
+  popupClose: {
+    background: 'none', border: 'none', color: '#666', fontSize: 18,
+    cursor: 'pointer', padding: '4px 8px',
+  },
+  popupSection: {
+    marginBottom: 16,
+  },
   soundGroupLabel: {
     fontSize: 9, fontWeight: 600, letterSpacing: 2, marginBottom: 4,
   },
@@ -668,14 +760,28 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid', borderRadius: 4, padding: '3px 8px',
     cursor: 'pointer', transition: 'all 0.1s',
   },
-  channelControls: {
-    display: 'flex', gap: 20, marginTop: 10, paddingTop: 10,
-    borderTop: '1px solid #2a2a2a',
+  popupControls: {
+    display: 'flex', flexDirection: 'column', gap: 12,
+    paddingTop: 14, borderTop: '1px solid #333',
   },
-  channelControl: { display: 'flex', alignItems: 'center', gap: 8 },
-  channelLabel: { fontSize: 9, fontWeight: 600, letterSpacing: 2, color: '#666', minWidth: 50 },
-  channelSlider: { width: 120, accentColor: '#ff3b30', cursor: 'pointer' },
-  channelValue: { fontSize: 11, color: '#888', fontFamily: MONO, minWidth: 36 },
+  popupControl: {
+    display: 'flex', alignItems: 'center', gap: 10,
+  },
+  popupControlLabel: {
+    fontSize: 9, fontWeight: 600, letterSpacing: 2, color: '#666', minWidth: 56,
+  },
+  popupControlSlider: {
+    flex: 1, accentColor: '#ff3b30', cursor: 'pointer',
+  },
+  popupControlValue: {
+    fontSize: 11, color: '#888', fontFamily: MONO, minWidth: 40, textAlign: 'right' as const,
+  },
+  previewButton: {
+    fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#ccc',
+    background: 'linear-gradient(180deg, #333, #272727)',
+    border: '1px solid #444', borderRadius: 6, padding: '6px 14px',
+    cursor: 'pointer', letterSpacing: 1,
+  },
   bottomBar: {
     height: 8,
     background: 'linear-gradient(180deg, #1e1e1e, #2a2a2a)',
