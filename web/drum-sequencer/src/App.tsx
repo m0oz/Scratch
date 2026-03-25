@@ -536,6 +536,35 @@ export default function App() {
 
       <div style={styles.bottomBar} />
 
+      {/* Portrait orientation overlay */}
+      <style>{`
+        .portrait-overlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.92);
+          z-index: 9999;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          text-align: center;
+          padding: 40px;
+        }
+        @media (orientation: portrait) and (max-width: 900px) {
+          .portrait-overlay { display: flex; }
+        }
+      `}</style>
+      <div className="portrait-overlay">
+        <div style={{ fontSize: 48 }}>↻</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: 2 }}>
+          ROTATE YOUR DEVICE
+        </div>
+        <div style={{ fontSize: 13, color: '#888', maxWidth: 260, lineHeight: 1.5 }}>
+          DR-808 works best in landscape mode. Please rotate your device to continue.
+        </div>
+      </div>
+
       {/* Track Sound Popup (overlay) */}
       {trackPopup !== null && popupTrack && (
         <div style={styles.overlay} onClick={() => setTrackPopup(null)}>
