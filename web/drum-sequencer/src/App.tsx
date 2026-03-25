@@ -4,21 +4,49 @@ import {
   SOUNDS_BY_CATEGORY, CATEGORY_LABELS,
   type SoundCategory, type SoundDef, SOUND_CATALOG,
 } from './audioEngine';
-import { PRESETS, DEFAULT_TRACKS, type Track } from './patterns';
+import { PRESETS, PRESET_GROUPS, DEFAULT_TRACKS, type Track } from './patterns';
 import { startDetection, beginRecording, stopDetection, quantizeHits, isDetecting, isRecording, getAnalyser, type DetectedHit } from './beatDetector';
 
 const SCHEDULE_AHEAD = 0.1;
 const LOOKAHEAD = 25;
+const STORAGE_KEY = 'dr808-saved-pattern';
+
+interface SavedState {
+  tracks: Track[];
+  bpm: number;
+  stepCount: number;
+  swing: number;
+}
+
+function loadSavedState(): SavedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data && Array.isArray(data.tracks) && data.tracks.length > 0) return data;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveState(state: SavedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch { /* ignore */ }
+}
+
+const _saved = loadSavedState();
 
 export default function App() {
-  const [tracks, setTracks] = useState<Track[]>(() =>
-    PRESETS[0].tracks.map(t => ({ ...t, steps: [...t.steps] }))
-  );
-  const [stepCount, setStepCount] = useState(PRESETS[0].steps);
-  const [bpm, setBpm] = useState(PRESETS[0].bpm);
+  const [tracks, setTracks] = useState<Track[]>(() => {
+    const s = _saved;
+    if (s) return s.tracks.map(t => ({ ...t, steps: [...t.steps] }));
+    return PRESETS[0].tracks.map(t => ({ ...t, steps: [...t.steps] }));
+  });
+  const [stepCount, setStepCount] = useState(_saved?.stepCount ?? PRESETS[0].steps);
+  const [bpm, setBpm] = useState(_saved?.bpm ?? PRESETS[0].bpm);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
-  const [swing, setSwing] = useState(0);
+  const [swing, setSwing] = useState(_saved?.swing ?? 0);
 
   // UI popups
   const [trackPopup, setTrackPopup] = useState<number | null>(null);
@@ -96,6 +124,11 @@ export default function App() {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
     };
   }, []);
+
+  // ── Auto-save to localStorage ────────────────────────────
+  useEffect(() => {
+    saveState({ tracks, bpm, stepCount, swing });
+  }, [tracks, bpm, stepCount, swing]);
 
   // ── Track editing ──────────────────────────────────────
 
@@ -405,12 +438,27 @@ export default function App() {
         </div>
       )}
 
-      {/* Presets */}
+      {/* Pattern selector dropdown */}
       <div style={styles.presets}>
-        <span style={styles.presetLabel}>PATTERNS</span>
-        {PRESETS.map((p, i) => (
-          <button key={i} onClick={() => loadPreset(i)} style={styles.presetButton}>{p.name}</button>
-        ))}
+        <span style={styles.presetLabel}>PATTERN</span>
+        <select
+          style={styles.patternSelect}
+          value=""
+          onChange={e => {
+            const idx = Number(e.target.value);
+            if (!isNaN(idx)) loadPreset(idx);
+          }}
+        >
+          <option value="" disabled>Select a pattern…</option>
+          {PRESET_GROUPS.map(group => (
+            <optgroup key={group.label} label={group.label}>
+              {group.patterns.map(p => {
+                const idx = PRESETS.indexOf(p);
+                return <option key={idx} value={idx}>{p.name}</option>;
+              })}
+            </optgroup>
+          ))}
+        </select>
       </div>
 
       {/* Step LEDs */}
@@ -676,11 +724,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const,
   },
   presetLabel: { fontSize: 9, letterSpacing: 2, color: '#555', marginRight: 8, fontWeight: 600 },
-  presetButton: {
-    fontFamily: FONT, fontSize: 11, color: '#bbb',
-    background: 'linear-gradient(180deg, #2a2a2a, #222)',
-    border: '1px solid #3a3a3a', borderRadius: 6, padding: '5px 10px',
-    cursor: 'pointer', letterSpacing: 0.5, fontWeight: 500,
+  patternSelect: {
+    fontFamily: FONT, fontSize: 13, color: '#e0e0e0',
+    background: '#1a1a1a',
+    border: '1px solid #3a3a3a', borderRadius: 6, padding: '8px 12px',
+    cursor: 'pointer', fontWeight: 500, flex: 1, maxWidth: 320,
+    outline: 'none',
   },
   stepIndicators: {
     display: 'flex', gap: 3, padding: '6px 24px',
