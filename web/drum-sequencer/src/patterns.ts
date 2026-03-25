@@ -183,11 +183,88 @@ export const TRAP: Pattern = {
   ],
 };
 
+// ── Additional breakbeat patterns ─────────────────────────
+
+export const APACHE: Pattern = {
+  name: 'Apache', bpm: 110, steps: S32,
+  tracks: [
+    t('KICK',  'kick-boom',   C[0], S32, [0, 6, 8, 14, 16, 22, 24, 28]),
+    t('SNARE', 'snare-fat',   C[1], S32, [4, 12, 20, 28]),
+    t('C.HAT', 'chat-808',    C[2], S32, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
+    t('O.HAT', 'ohat-loose',  C[3], S32, [6, 22]),
+    t('CLAP',  'clap-room',   C[4], S32, [4, 20]),
+    t('TOM',   'tom-mid',     C[5], S32, []),
+    t('RIM',   'perc-rimshot', C[6], S32, []),
+    t('CRASH', 'perc-crash',  C[7], S32, [0]),
+  ],
+};
+
+export const SKULL_SNAP: Pattern = {
+  name: 'Skull Snap', bpm: 100, steps: S32,
+  tracks: [
+    t('KICK',  'kick-808',    C[0], S32, [0, 10, 16, 26]),
+    t('SNARE', 'snare-808',   C[1], S32, [4, 12, 14, 20, 28, 30]),
+    t('C.HAT', 'chat-808',    C[2], S32, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
+    t('O.HAT', 'ohat-808',    C[3], S32, []),
+    t('CLAP',  'clap-808',    C[4], S32, []),
+    t('TOM',   'tom-mid',     C[5], S32, []),
+    t('RIM',   'perc-rimshot', C[6], S32, []),
+    t('RIDE',  'perc-ride',   C[7], S32, []),
+  ],
+};
+
+export const SYNTHETIC_SUB: Pattern = {
+  name: 'Synthetic Sub', bpm: 108, steps: S32,
+  tracks: [
+    t('KICK',  'kick-sub',    C[0], S32, [0, 3, 8, 11, 16, 19, 24, 27]),
+    t('SNARE', 'snare-crack', C[1], S32, [4, 12, 20, 28]),
+    t('C.HAT', 'chat-crispy', C[2], S32, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
+    t('O.HAT', 'ohat-sizzle', C[3], S32, [14, 30]),
+    t('CLAP',  'clap-tight',  C[4], S32, [4, 20]),
+    t('TOM',   'tom-low',     C[5], S32, []),
+    t('RIM',   'perc-rimshot', C[6], S32, [2, 10, 18, 26]),
+    t('COWBELL','perc-cowbell', C[7], S32, []),
+  ],
+};
+
+export const HOT_PANTS: Pattern = {
+  name: 'Hot Pants', bpm: 112, steps: S32,
+  tracks: [
+    t('KICK',  'kick-tight',  C[0], S32, [0, 6, 10, 16, 22, 26]),
+    t('SNARE', 'snare-808',   C[1], S32, [4, 7, 12, 20, 23, 28]),
+    t('C.HAT', 'chat-808',    C[2], S32, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
+    t('O.HAT', 'ohat-808',    C[3], S32, []),
+    t('CLAP',  'clap-808',    C[4], S32, [4, 20]),
+    t('TOM',   'tom-high',    C[5], S32, []),
+    t('CONGA', 'perc-conga',  C[6], S32, [2, 6, 10, 14, 18, 22, 26, 30]),
+    t('SHAKER','perc-shaker',  C[7], S32, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31], 0.4),
+  ],
+};
+
+export const WORM: Pattern = {
+  name: 'Worm', bpm: 98, steps: S32,
+  tracks: [
+    t('KICK',  'kick-boom',   C[0], S32, [0, 5, 8, 16, 21, 24]),
+    t('SNARE', 'snare-lofi',  C[1], S32, [4, 12, 20, 28]),
+    t('C.HAT', 'chat-soft',   C[2], S32, [0, 4, 6, 8, 12, 14, 16, 20, 22, 24, 28, 30]),
+    t('O.HAT', 'ohat-trashy', C[3], S32, [2, 10, 18, 26]),
+    t('CLAP',  'clap-big',    C[4], S32, []),
+    t('TOM',   'tom-floor',   C[5], S32, []),
+    t('RIM',   'perc-rimshot', C[6], S32, []),
+    t('RIDE',  'perc-ride',   C[7], S32, [0, 4, 8, 12, 16, 20, 24, 28], 0.5),
+  ],
+};
+
 export const PRESETS: Pattern[] = [
   AMEN_BREAK,
   FUNKY_DRUMMER,
   THINK_BREAK,
   IMPEACH,
+  APACHE,
+  SKULL_SNAP,
+  HOT_PANTS,
+  WORM,
+  SYNTHETIC_SUB,
   BOOM_BAP,
   LOFI_CHILL,
   LOFI_DUSTY,

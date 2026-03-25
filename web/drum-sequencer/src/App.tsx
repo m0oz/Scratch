@@ -62,9 +62,11 @@ export default function App() {
       setCurrentStep(step);
 
       const secondsPerStep = 60.0 / bpmRef.current / 4;
-      const isOddStep = step % 2 === 1;
-      const swingAmount = isOddStep ? swingRef.current * secondsPerStep * 0.5 : 0;
-      nextStepTimeRef.current = time + secondsPerStep + swingAmount;
+      const swingOffset = swingRef.current * secondsPerStep * 0.5;
+      // Even step → push next (odd) step later; odd step → shorten to compensate
+      // This keeps each step-pair at exactly 2 * secondsPerStep
+      const isEvenStep = step % 2 === 0;
+      nextStepTimeRef.current = time + secondsPerStep + (isEvenStep ? swingOffset : -swingOffset);
       nextStepRef.current = (step + 1) % stepCountRef.current;
     }
     timerRef.current = window.setTimeout(scheduler, LOOKAHEAD);
