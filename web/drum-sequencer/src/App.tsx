@@ -5,17 +5,29 @@ import {
   type SoundCategory, type SoundDef, SOUND_CATALOG,
 } from './audioEngine';
 import { PRESETS, PRESET_GROUPS, DEFAULT_TRACKS, type Track } from './patterns';
-import { startDetection, beginRecording, stopDetection, quantizeHits, isDetecting, isRecording, getAnalyser, type DetectedHit } from './beatDetector';
+import {
+  playBassNote, createBassSteps, midiToName, midiToFreq,
+  DEFAULT_BASS_SETTINGS, QUICK_NOTES, QUICK_NOTE_LABELS,
+  type BassStep, type BassSettings, type BassWaveform,
+} from './bassSynth';
 
+const ACCENT = '#00e5cc';
 const SCHEDULE_AHEAD = 0.1;
 const LOOKAHEAD = 25;
 const STORAGE_KEY = 'dr808-saved-pattern';
+
+// Piano roll rows: C3 (top) down to C2 (bottom), skip rest (0)
+const BASS_ROLL_NOTES = [48, 46, 44, 43, 41, 39, 38, 36];
+const BASS_ROLL_LABELS = ['C3', 'Bb2', 'Ab2', 'G2', 'F2', 'Eb2', 'D2', 'C2'];
+const BLACK_KEYS = new Set([39, 44, 46]); // Eb, Ab, Bb
 
 interface SavedState {
   tracks: Track[];
   bpm: number;
   stepCount: number;
   swing: number;
+  bassSteps?: BassStep[];
+  bassSettings?: BassSettings;
 }
 
 function loadSavedState(): SavedState | null {
@@ -48,18 +60,24 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(-1);
   const [swing, setSwing] = useState(_saved?.swing ?? 0);
 
-  // UI popups
+  // UI state
   const [trackPopup, setTrackPopup] = useState<number | null>(null);
   const [showTempoSlider, setShowTempoSlider] = useState(false);
   const [showSwingSlider, setShowSwingSlider] = useState(false);
+  const [activeTab, setActiveTab] = useState<'drums' | 'bass'>('drums');
 
-  // Vocalize mode
-  const [vocalizeActive, setVocalizeActive] = useState(false);
-  const [vocalizeCountdown, setVocalizeCountdown] = useState(-1);
-  const [vocalizeHits, setVocalizeHits] = useState<DetectedHit[]>([]);
-  const [micLevel, setMicLevel] = useState(0);
-  const micAnimRef = useRef<number>(0);
+  // Bass state
+  const [bassSteps, setBassSteps] = useState<BassStep[]>(() =>
+    _saved?.bassSteps ?? createBassSteps(PRESETS[0].steps)
+  );
+  const [bassSettings, setBassSettings] = useState<BassSettings>(() =>
+    _saved?.bassSettings ?? { ...DEFAULT_BASS_SETTINGS }
+  );
 
+  // Tap-record state
+  const [tapRecTrack, setTapRecTrack] = useState<number | null>(null);
+
+  // Refs
   const tracksRef = useRef(tracks);
   tracksRef.current = tracks;
   const bpmRef = useRef(bpm);
@@ -72,6 +90,12 @@ export default function App() {
   const nextStepRef = useRef(0);
   const nextStepTimeRef = useRef(0);
   const timerRef = useRef<number | null>(null);
+  const bassStepsRef = useRef(bassSteps);
+  bassStepsRef.current = bassSteps;
+  const bassSettingsRef = useRef(bassSettings);
+  bassSettingsRef.current = bassSettings;
+  const prevBassFreqRef = useRef<number | null>(null);
+  const prevStepRef = useRef(-1);
 
   // ── Sequencer scheduler ────────────────────────────────
 
@@ -85,6 +109,16 @@ export default function App() {
         if (track.steps[step]) {
           playSoundById(track.soundId, time, track.volume, track.decay);
         }
+      }
+
+      // Bass synth
+      const bs = bassStepsRef.current[step];
+      if (bs && bs.note !== 0) {
+        const spst = 60.0 / bpmRef.current / 4;
+        playBassNote(bs.note, time, spst, bassSettingsRef.current, bs.accent, bs.slide, prevBassFreqRef.current);
+        prevBassFreqRef.current = midiToFreq(bs.note);
+      } else {
+        prevBassFreqRef.current = null;
       }
 
       setCurrentStep(step);
@@ -106,6 +140,8 @@ export default function App() {
       isPlayingRef.current = false;
       setIsPlaying(false);
       setCurrentStep(-1);
+      setTapRecTrack(null);
+      prevStepRef.current = -1;
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
@@ -127,8 +163,8 @@ export default function App() {
 
   // ── Auto-save to localStorage ────────────────────────────
   useEffect(() => {
-    saveState({ tracks, bpm, stepCount, swing });
-  }, [tracks, bpm, stepCount, swing]);
+    saveState({ tracks, bpm, stepCount, swing, bassSteps, bassSettings });
+  }, [tracks, bpm, stepCount, swing, bassSteps, bassSettings]);
 
   // ── Track editing ──────────────────────────────────────
 
@@ -175,9 +211,13 @@ export default function App() {
   }, []);
 
   const clearAll = useCallback(() => {
-    setTracks(DEFAULT_TRACKS(stepCount));
-    setTrackPopup(null);
-  }, [stepCount]);
+    if (activeTab === 'bass') {
+      setBassSteps(createBassSteps(stepCount));
+    } else {
+      setTracks(DEFAULT_TRACKS(stepCount));
+      setTrackPopup(null);
+    }
+  }, [stepCount, activeTab]);
 
   // ── Bars toggle ──────────────────────────────────────────
 
@@ -186,137 +226,77 @@ export default function App() {
     setStepCount(newSteps);
     setTracks(prev => prev.map(tr => {
       if (newSteps > tr.steps.length) {
-        // Extend: copy bar 1 into bar 2
         const extended = [...tr.steps];
         while (extended.length < newSteps) extended.push(tr.steps[extended.length - tr.steps.length] ?? false);
         return { ...tr, steps: extended };
       } else {
-        // Truncate to 1 bar
         return { ...tr, steps: tr.steps.slice(0, newSteps) };
       }
     }));
+    setBassSteps(prev => {
+      if (newSteps > prev.length) {
+        const ext = [...prev];
+        while (ext.length < newSteps) ext.push({ note: 0, accent: false, slide: false });
+        return ext;
+      }
+      return prev.slice(0, newSteps);
+    });
   }, [stepCount]);
 
-  // ── Vocalize mode ──────────────────────────────────────
+  // ── Tap-record mode ───────────────────────────────────
 
-  const startVocalize = useCallback(async () => {
+  const handleTapRec = useCallback((trackIndex: number) => {
     resumeAudio();
-
-    // Stop playback if running
-    if (isPlayingRef.current) {
-      isPlayingRef.current = false;
-      setIsPlaying(false);
-      setCurrentStep(-1);
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
+    if (tapRecTrack === trackIndex) {
+      // Already recording this track — register a HIT at current step
+      if (currentStep >= 0) {
+        setTracks(prev => prev.map((tr, i) =>
+          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? true : s) } : tr
+        ));
+        playSoundById(tracksRef.current[trackIndex].soundId, undefined,
+          tracksRef.current[trackIndex].volume, tracksRef.current[trackIndex].decay);
+      }
+    } else {
+      // Arm this track — clear steps and start recording
+      setTapRecTrack(trackIndex);
+      prevStepRef.current = -1;
+      setTracks(prev => prev.map((tr, i) =>
+        i === trackIndex ? { ...tr, steps: tr.steps.map(() => false) } : tr
+      ));
+      // Auto-start playback
+      if (!isPlayingRef.current) {
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+        nextStepRef.current = 0;
+        nextStepTimeRef.current = getAudioContext().currentTime;
+        scheduler();
       }
     }
+  }, [tapRecTrack, currentStep, scheduler]);
 
-    setVocalizeHits([]);
-
-    // Request mic access and start analysers early (during countdown)
-    // so the running average has time to calibrate to ambient noise
-    const hits: DetectedHit[] = [];
-    await startDetection((hit) => {
-      hits.push(hit);
-      setVocalizeHits([...hits]);
-    });
-
-    // Mic level animation (runs through count-in and recording)
-    const animateMic = () => {
-      const analyser = getAnalyser();
-      if (analyser) {
-        const data = new Float32Array(analyser.fftSize);
-        analyser.getFloatTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-        setMicLevel(Math.sqrt(sum / data.length));
-      }
-      if (isDetecting()) micAnimRef.current = requestAnimationFrame(animateMic);
-    };
-    micAnimRef.current = requestAnimationFrame(animateMic);
-
-    const secondsPerBeat = 60.0 / bpmRef.current;
-    const ctx = getAudioContext();
-
-    // ── Phase 1: Count-in (4 beats with metronome) ────────
-    // Detector is running but NOT recording, so it calibrates its
-    // noise floor from ambient + metronome bleed.
-    const countInBeats = 4;
-    const countInStart = ctx.currentTime + 0.1; // tiny buffer
-    for (let i = 0; i < countInBeats; i++) {
-      const t = countInStart + i * secondsPerBeat;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.value = i === 0 ? 1400 : 900;
-      g.gain.setValueAtTime(0.2, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-      o.start(t); o.stop(t + 0.06);
+  // Detect loop wrap → clear track for fresh take
+  useEffect(() => {
+    if (tapRecTrack === null || currentStep < 0) {
+      prevStepRef.current = currentStep;
+      return;
     }
-
-    // Tick down the countdown display synced to the scheduled audio clicks.
-    // Wait for the initial buffer, then update the display on each beat.
-    const countInEnd = countInStart + countInBeats * secondsPerBeat;
-    setVocalizeCountdown(countInBeats);
-    await new Promise(r => setTimeout(r, (countInStart - ctx.currentTime) * 1000));
-    for (let i = countInBeats - 1; i >= 1; i--) {
-      await new Promise(r => setTimeout(r, secondsPerBeat * 1000));
-      setVocalizeCountdown(i);
+    const prev = prevStepRef.current;
+    prevStepRef.current = currentStep;
+    if (prev >= 0 && currentStep < prev) {
+      // Loop wrapped — clear for redo
+      setTracks(tr => tr.map((t, i) =>
+        i === tapRecTrack ? { ...t, steps: t.steps.map(() => false) } : t
+      ));
     }
-    // Wait for the final beat to finish before moving to recording
-    const remaining = (countInEnd - ctx.currentTime) * 1000;
-    if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
-    setVocalizeCountdown(0);
+  }, [currentStep, tapRecTrack]);
 
-    // ── Phase 2: Recording (2 bars with metronome) ────────
-    setVocalizeActive(true);
+  // ── Bass editing ─────────────────────────────────────────
 
-    // Always record exactly 2 bars
-    const recordBeats = (stepCountRef.current / 4) * 2;
-    const recordDuration = recordBeats * secondsPerBeat;
-
-    // Start capturing hits NOW
-    beginRecording();
-
-    // Schedule metronome clicks for the recording period
-    const recStart = ctx.currentTime;
-    for (let i = 0; i < recordBeats; i++) {
-      const t = recStart + i * secondsPerBeat;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.value = i % 4 === 0 ? 1400 : 900;
-      g.gain.setValueAtTime(0.12, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-      o.start(t); o.stop(t + 0.05);
-    }
-
-    // Auto-stop after recording duration + generous buffer
-    setTimeout(() => {
-      if (isDetecting()) finishVocalize();
-    }, (recordDuration + 1.0) * 1000);
-  }, []);
-
-  const finishVocalize = useCallback(() => {
-    cancelAnimationFrame(micAnimRef.current);
-    const hits = stopDetection();
-    setVocalizeActive(false);
-    setVocalizeCountdown(-1);
-    setMicLevel(0);
-
-    if (hits.length === 0) return;
-
-    // Quantize hits to grid
-    const pattern = quantizeHits(hits, bpmRef.current, stepCountRef.current);
-
-    // Apply to first 3 tracks (kick, snare, hat)
-    setTracks(prev => prev.map((tr, i) => {
-      if (i === 0) return { ...tr, steps: pattern.kick };
-      if (i === 1) return { ...tr, steps: pattern.snare };
-      if (i === 2) return { ...tr, steps: pattern.hat };
-      return tr;
+  const toggleBassNote = useCallback((stepIdx: number, note: number) => {
+    setBassSteps(prev => prev.map((bs, i) => {
+      if (i !== stepIdx) return bs;
+      // Toggle: if same note, clear it; otherwise set it
+      return { ...bs, note: bs.note === note ? 0 : note };
     }));
   }, []);
 
@@ -345,7 +325,7 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.brandSection}>
-          <div style={styles.brandName}>DR-808</div>
+          <div style={styles.brandName}>8 MO 8</div>
           <div style={styles.brandSub}>RHYTHM COMPOSER</div>
         </div>
         <div style={styles.displaySection}>
@@ -389,54 +369,20 @@ export default function App() {
         </div>
       </div>
 
-      {/* Controls — no sliders, just buttons */}
+      {/* Controls — 80s icon buttons */}
       <div style={styles.controls}>
-        <button onClick={handlePlay}
-          style={{
-            ...styles.playButton,
-            background: isPlaying
-              ? 'linear-gradient(180deg, #ff3b30, #cc2200)'
-              : 'linear-gradient(180deg, #34c759, #248a3d)',
-          }}>
-          {isPlaying ? '■ STOP' : '▶ PLAY'}
+        <button onClick={handlePlay} style={{
+          ...styles.neonBtn,
+          borderColor: isPlaying ? '#ff3b30' : '#34c759',
+          color: isPlaying ? '#ff3b30' : '#34c759',
+          boxShadow: isPlaying
+            ? '0 0 10px rgba(255,59,48,0.4), inset 0 0 6px rgba(255,59,48,0.1)'
+            : '0 0 10px rgba(52,199,89,0.4), inset 0 0 6px rgba(52,199,89,0.1)',
+        }}>
+          {isPlaying ? '■' : '▶'}
         </button>
-        <button onClick={clearAll} style={styles.clearButton}>CLEAR</button>
-        <button
-          onClick={vocalizeActive ? finishVocalize : startVocalize}
-          disabled={vocalizeCountdown >= 1}
-          style={{
-            ...styles.vocalizeButton,
-            background: vocalizeActive
-              ? 'linear-gradient(180deg, #ff3b30, #cc2200)'
-              : 'linear-gradient(180deg, #5856d6, #3634a3)',
-            opacity: vocalizeCountdown >= 1 ? 0.5 : 1,
-          }}>
-          {vocalizeCountdown >= 1
-            ? `${vocalizeCountdown}...`
-            : vocalizeActive
-              ? '■ DONE'
-              : '🎤 VOCALIZE'}
-        </button>
+        <button onClick={clearAll} style={styles.neonBtn}>✕</button>
       </div>
-
-      {/* Vocalize feedback */}
-      {(vocalizeActive || vocalizeCountdown >= 0) && (
-        <div style={styles.vocalizeBar}>
-          <div style={{
-            ...styles.micMeter,
-            width: `${Math.min(100, micLevel * 600)}%`,
-          }} />
-          {vocalizeCountdown >= 1 ? (
-            <span style={styles.vocalizeText}>
-              Count-in... {vocalizeCountdown}
-            </span>
-          ) : vocalizeActive ? (
-            <span style={styles.vocalizeText}>
-              Recording — beatbox your pattern! ({vocalizeHits.length} hits)
-            </span>
-          ) : null}
-        </div>
-      )}
 
       {/* Pattern selector dropdown */}
       <div style={styles.presets}>
@@ -461,22 +407,36 @@ export default function App() {
         </select>
       </div>
 
+      {/* Tab bar */}
+      <div style={styles.tabBar}>
+        {(['drums', 'bass'] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            ...styles.tabBtn,
+            color: activeTab === tab ? ACCENT : '#666',
+            borderBottomColor: activeTab === tab ? ACCENT : 'transparent',
+            textShadow: activeTab === tab ? `0 0 8px ${ACCENT}60` : 'none',
+          }}>
+            {tab.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
       {/* Step LEDs */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: 120, flexShrink: 0 }} />
+        <div style={{ width: activeTab === 'drums' ? 140 : 60, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepLed,
             ...(i % 16 === 0 && i > 0 ? { marginLeft: 6 } : {}),
-            background: i === currentStep ? '#ff3b30' : i % 4 === 0 ? '#555' : '#2a2a2a',
-            boxShadow: i === currentStep ? '0 0 8px #ff3b30' : 'none',
+            background: i === currentStep ? ACCENT : i % 4 === 0 ? '#555' : '#2a2a2a',
+            boxShadow: i === currentStep ? `0 0 8px ${ACCENT}` : 'none',
           }} />
         ))}
       </div>
 
       {/* Beat numbers */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: 120, flexShrink: 0 }} />
+        <div style={{ width: activeTab === 'drums' ? 140 : 60, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepNumber,
@@ -489,12 +449,22 @@ export default function App() {
         ))}
       </div>
 
-      {/* Sequencer grid */}
-      <div style={styles.grid}>
-        {tracks.map((track, trackIdx) => (
-          <div key={trackIdx}>
-            <div style={styles.trackRow}>
+      {/* Drum grid */}
+      {activeTab === 'drums' && (
+        <div style={styles.grid}>
+          {tracks.map((track, trackIdx) => (
+            <div key={trackIdx} style={styles.trackRow}>
               <div style={styles.trackControls}>
+                <button
+                  className={tapRecTrack === trackIdx ? 'tap-rec-armed' : ''}
+                  onClick={() => handleTapRec(trackIdx)}
+                  style={{
+                    ...styles.tapRecBtn,
+                    borderColor: tapRecTrack === trackIdx ? '#ff3b30' : '#444',
+                    color: tapRecTrack === trackIdx ? '#ff3b30' : '#555',
+                    boxShadow: tapRecTrack === trackIdx ? '0 0 8px rgba(255,59,48,0.5)' : 'none',
+                  }}
+                >●</button>
                 <button
                   style={{ ...styles.trackLabel, borderLeftColor: track.color }}
                   onClick={() => {
@@ -530,9 +500,75 @@ export default function App() {
                 ))}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bass piano roll */}
+      {activeTab === 'bass' && (
+        <div style={styles.grid}>
+          {BASS_ROLL_NOTES.map((note, rowIdx) => (
+            <div key={note} style={styles.trackRow}>
+              <div style={{
+                ...styles.bassNoteLabel,
+                background: BLACK_KEYS.has(note) ? '#1a1a1a' : '#2a2a2a',
+                color: BLACK_KEYS.has(note) ? ACCENT : '#ccc',
+              }}>
+                {BASS_ROLL_LABELS[rowIdx]}
+              </div>
+              <div style={styles.stepsRow}>
+                {Array.from({ length: stepCount }, (_, stepIdx) => {
+                  const isActive = bassSteps[stepIdx]?.note === note;
+                  return (
+                    <button
+                      key={stepIdx}
+                      onClick={() => toggleBassNote(stepIdx, note)}
+                      style={{
+                        ...styles.stepButton,
+                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                        background: isActive
+                          ? ACCENT
+                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                        borderColor: stepIdx === currentStep ? '#fff' : isActive ? ACCENT : '#3a3a3a',
+                        boxShadow: isActive
+                          ? `0 0 6px ${ACCENT}40`
+                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {/* Bass controls */}
+          <div style={styles.bassControls}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600, marginRight: 4 }}>WAVE</span>
+              {(['sine', 'square', 'sawtooth', 'triangle'] as BassWaveform[]).map(w => (
+                <button key={w} onClick={() => setBassSettings(s => ({ ...s, waveform: w }))}
+                  style={{
+                    ...styles.waveBtn,
+                    borderColor: bassSettings.waveform === w ? ACCENT : '#3a3a3a',
+                    color: bassSettings.waveform === w ? ACCENT : '#888',
+                    boxShadow: bassSettings.waveform === w ? `0 0 6px ${ACCENT}40` : 'none',
+                  }}>
+                  {w === 'sine' ? 'SIN' : w === 'square' ? 'SQR' : w === 'sawtooth' ? 'SAW' : 'TRI'}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1 }}>
+              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600 }}>CUT</span>
+              <input type="range" min="80" max="8000" value={bassSettings.cutoff}
+                onChange={e => setBassSettings(s => ({ ...s, cutoff: Number(e.target.value) }))}
+                style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
+              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600 }}>RES</span>
+              <input type="range" min="50" max="2000" value={bassSettings.resonance * 100}
+                onChange={e => setBassSettings(s => ({ ...s, resonance: Number(e.target.value) / 100 }))}
+                style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       <div style={styles.bottomBar} />
 
@@ -554,6 +590,11 @@ export default function App() {
         @media (orientation: portrait) and (max-width: 900px) {
           .portrait-overlay { display: flex; }
         }
+        @keyframes tapRecPulse {
+          0%, 100% { box-shadow: 0 0 4px rgba(255,59,48,0.4); }
+          50% { box-shadow: 0 0 12px rgba(255,59,48,0.8); }
+        }
+        .tap-rec-armed { animation: tapRecPulse 0.8s ease-in-out infinite; }
       `}</style>
       <div className="portrait-overlay">
         <div style={{ fontSize: 48 }}>↻</div>
@@ -561,7 +602,7 @@ export default function App() {
           ROTATE YOUR DEVICE
         </div>
         <div style={{ fontSize: 13, color: '#888', maxWidth: 260, lineHeight: 1.5 }}>
-          DR-808 works best in landscape mode. Please rotate your device to continue.
+          8 MO 8 works best in landscape. Rotate your device to continue.
         </div>
       </div>
 
@@ -583,7 +624,7 @@ export default function App() {
                 <div key={cat} style={{ marginBottom: 10 }}>
                   <div style={{
                     ...styles.soundGroupLabel,
-                    color: getSoundCategory(popupTrack.soundId) === cat ? '#ff3b30' : '#555',
+                    color: getSoundCategory(popupTrack.soundId) === cat ? ACCENT : '#555',
                   }}>
                     {CATEGORY_LABELS[cat]}
                   </div>
@@ -670,8 +711,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   brandSection: { display: 'flex', flexDirection: 'column', gap: 2 },
   brandName: {
-    fontSize: 28, fontWeight: 900, color: '#ff3b30', letterSpacing: 4,
-    textShadow: '0 0 20px rgba(255, 59, 48, 0.5)', fontFamily: FONT,
+    fontSize: 28, fontWeight: 900, color: ACCENT, letterSpacing: 4,
+    textShadow: `0 0 20px ${ACCENT}80`, fontFamily: FONT,
   },
   brandSub: { fontSize: 9, letterSpacing: 6, color: '#666', fontWeight: 500 },
   displaySection: { display: 'flex', gap: 12 },
@@ -682,8 +723,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   displayLabel: { fontSize: 8, color: '#555', letterSpacing: 2, marginBottom: 4, fontWeight: 600 },
   displayValue: {
-    fontSize: 18, color: '#ff3b30', fontFamily: MONO, fontWeight: 600,
-    textShadow: '0 0 10px rgba(255, 59, 48, 0.4)',
+    fontSize: 18, color: ACCENT, fontFamily: MONO, fontWeight: 600,
+    textShadow: `0 0 10px ${ACCENT}66`,
   },
   dropdownSlider: {
     position: 'absolute' as const,
@@ -700,52 +741,19 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
   },
   popupSlider: {
-    width: '100%', accentColor: '#ff3b30', cursor: 'pointer',
+    width: '100%', accentColor: ACCENT, cursor: 'pointer',
   },
   controls: {
-    display: 'flex', gap: 12, alignItems: 'center', padding: '14px 24px',
+    display: 'flex', gap: 8, alignItems: 'center', padding: '10px 24px',
     background: '#1e1e1e', borderLeft: '1px solid #333', borderRight: '1px solid #333',
-    flexWrap: 'wrap' as const,
   },
-  playButton: {
-    fontFamily: FONT, fontSize: 13, fontWeight: 700, color: '#fff',
-    border: 'none', borderRadius: 8, padding: '12px 20px', cursor: 'pointer',
-    letterSpacing: 2, textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
-    minWidth: 100,
-  },
-  clearButton: {
-    fontFamily: FONT, fontSize: 11, fontWeight: 600, color: '#999',
-    background: 'linear-gradient(180deg, #333, #272727)',
-    border: '1px solid #444', borderRadius: 8, padding: '12px 14px',
-    cursor: 'pointer', letterSpacing: 2,
-  },
-  vocalizeButton: {
-    fontFamily: FONT, fontSize: 12, fontWeight: 700, color: '#fff',
-    border: 'none', borderRadius: 8, padding: '12px 16px', cursor: 'pointer',
-    letterSpacing: 1, textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
-    whiteSpace: 'nowrap' as const,
-  },
-  vocalizeBar: {
-    position: 'relative' as const,
-    padding: '10px 24px',
-    background: '#1a0a20',
-    borderLeft: '1px solid #333',
-    borderRight: '1px solid #333',
-    overflow: 'hidden',
-    minHeight: 36,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  micMeter: {
-    position: 'absolute' as const, left: 0, top: 0, bottom: 0,
-    background: 'linear-gradient(90deg, rgba(88, 86, 214, 0.3), rgba(88, 86, 214, 0.1))',
-    transition: 'width 0.05s',
-  },
-  vocalizeText: {
-    position: 'relative' as const, zIndex: 1,
-    fontSize: 12, color: '#b8b5ff', fontWeight: 600, letterSpacing: 1,
+  neonBtn: {
+    width: 38, height: 38, borderRadius: 8, fontSize: 16,
+    background: '#1a1a1a', border: '1.5px solid #444', color: '#666',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: FONT, fontWeight: 700, padding: 0,
+    boxShadow: '0 0 6px rgba(100,100,100,0.2)',
+    transition: 'all 0.15s',
   },
   presets: {
     display: 'flex', gap: 6, alignItems: 'center', padding: '12px 24px',
@@ -776,7 +784,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   trackRow: { display: 'flex', gap: 6, alignItems: 'center' },
   trackControls: {
-    width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
+    width: 140, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4,
   },
   trackLabel: {
     fontSize: 10, fontWeight: 700, color: '#ccc', letterSpacing: 0.5,
@@ -851,7 +859,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 9, fontWeight: 600, letterSpacing: 2, color: '#666', minWidth: 56,
   },
   popupControlSlider: {
-    flex: 1, accentColor: '#ff3b30', cursor: 'pointer',
+    flex: 1, accentColor: ACCENT, cursor: 'pointer',
   },
   popupControlValue: {
     fontSize: 11, color: '#888', fontFamily: MONO, minWidth: 40, textAlign: 'right' as const,
@@ -868,5 +876,37 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '0 0 12px 12px',
     border: '1px solid #333',
     borderTop: 'none',
+  },
+  // Tab bar
+  tabBar: {
+    display: 'flex', gap: 0, padding: '0 24px',
+    background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
+  },
+  tabBtn: {
+    fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: 3,
+    background: 'none', border: 'none', borderBottom: '2px solid transparent',
+    padding: '10px 20px', cursor: 'pointer', transition: 'all 0.15s',
+  },
+  // Tap record button
+  tapRecBtn: {
+    width: 28, height: 28, borderRadius: 14, fontSize: 14,
+    background: '#1a1a1a', border: '1.5px solid #444', color: '#555',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 0, flexShrink: 0, transition: 'all 0.15s', lineHeight: 1,
+  },
+  // Bass piano roll
+  bassNoteLabel: {
+    width: 60, flexShrink: 0, fontSize: 10, fontWeight: 700,
+    fontFamily: MONO, padding: '4px 6px', borderRadius: 2,
+    textAlign: 'center' as const, letterSpacing: 1,
+  },
+  bassControls: {
+    display: 'flex', gap: 16, alignItems: 'center', paddingTop: 10,
+    flexWrap: 'wrap' as const,
+  },
+  waveBtn: {
+    fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+    background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4,
+    padding: '4px 8px', cursor: 'pointer', transition: 'all 0.15s',
   },
 };
