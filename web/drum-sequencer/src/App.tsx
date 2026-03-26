@@ -7,7 +7,7 @@ import {
 import { PRESETS, PRESET_GROUPS, DEFAULT_TRACKS, type Track } from './patterns';
 import {
   playBassNote, createBassSteps, midiToName, midiToFreq,
-  DEFAULT_BASS_SETTINGS, QUICK_NOTES, QUICK_NOTE_LABELS,
+  DEFAULT_BASS_SETTINGS,
   type BassStep, type BassSettings, type BassWaveform,
 } from './bassSynth';
 
@@ -16,10 +16,18 @@ const SCHEDULE_AHEAD = 0.1;
 const LOOKAHEAD = 25;
 const STORAGE_KEY = 'dr808-saved-pattern';
 
-// Piano roll rows: C3 (top) down to C2 (bottom), skip rest (0)
-const BASS_ROLL_NOTES = [48, 46, 44, 43, 41, 39, 38, 36];
-const BASS_ROLL_LABELS = ['C3', 'Bb2', 'Ab2', 'G2', 'F2', 'Eb2', 'D2', 'C2'];
-const BLACK_KEYS = new Set([39, 44, 46]); // Eb, Ab, Bb
+// Piano roll rows: chromatic, C4 (top) down to C1 (bottom)
+const NOTE_NAMES_CHROM = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const BASS_ROLL_NOTES: number[] = [];
+const BASS_ROLL_LABELS: string[] = [];
+// C4(60) down to C1(24) — 3 octaves chromatic = 37 notes
+for (let midi = 60; midi >= 24; midi--) {
+  BASS_ROLL_NOTES.push(midi);
+  const octave = Math.floor(midi / 12) - 1;
+  BASS_ROLL_LABELS.push(NOTE_NAMES_CHROM[midi % 12] + octave);
+}
+const BLACK_KEYS = new Set([1, 3, 6, 8, 10]); // semitone offsets for black keys
+function isBlackKey(midi: number): boolean { return BLACK_KEYS.has(midi % 12); }
 
 interface SavedState {
   tracks: Track[];
@@ -320,89 +328,57 @@ export default function App() {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
+      {/* Header — single compact row */}
       <div style={styles.header}>
-        <div style={styles.brandSection}>
-          <div style={styles.brandName}>8 MO 8</div>
-          <div style={styles.brandSub}>RHYTHM COMPOSER</div>
-        </div>
-        <div style={styles.displaySection}>
-          <div
-            style={{ ...styles.display, cursor: 'pointer', position: 'relative' as const }}
-            onClick={() => { setShowTempoSlider(!showTempoSlider); setShowSwingSlider(false); }}
-          >
-            <div style={styles.displayLabel}>TEMPO</div>
-            <div style={styles.displayValue}>{bpm}</div>
-            {showTempoSlider && (
-              <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
-                <input type="range" min="60" max="200" value={bpm}
-                  onChange={e => setBpm(Number(e.target.value))} style={styles.popupSlider} />
-              </div>
-            )}
-          </div>
-          <div style={styles.display}>
-            <div style={styles.displayLabel}>STEP</div>
-            <div style={styles.displayValue}>{currentStep >= 0 ? currentStep + 1 : '--'}</div>
-          </div>
-          <div
-            style={{ ...styles.display, cursor: 'pointer' }}
-            onClick={toggleBars}
-          >
-            <div style={styles.displayLabel}>BARS</div>
-            <div style={styles.displayValue}>{stepCount / 16}</div>
-          </div>
-          <div
-            style={{ ...styles.display, cursor: 'pointer', position: 'relative' as const }}
-            onClick={() => { setShowSwingSlider(!showSwingSlider); setShowTempoSlider(false); }}
-          >
-            <div style={styles.displayLabel}>SWING</div>
-            <div style={styles.displayValue}>{Math.round(swing * 100)}%</div>
-            {showSwingSlider && (
-              <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
-                <input type="range" min="0" max="100" value={swing * 100}
-                  onChange={e => setSwing(Number(e.target.value) / 100)} style={styles.popupSlider} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Controls — 80s icon buttons */}
-      <div style={styles.controls}>
+        <div style={styles.brandName}>8MO8</div>
         <button onClick={handlePlay} style={{
-          ...styles.neonBtn,
+          ...styles.headerBtn,
           borderColor: isPlaying ? '#ff3b30' : '#34c759',
           color: isPlaying ? '#ff3b30' : '#34c759',
           boxShadow: isPlaying
-            ? '0 0 10px rgba(255,59,48,0.4), inset 0 0 6px rgba(255,59,48,0.1)'
-            : '0 0 10px rgba(52,199,89,0.4), inset 0 0 6px rgba(52,199,89,0.1)',
+            ? '0 0 8px rgba(255,59,48,0.3), inset 0 0 4px rgba(255,59,48,0.1)'
+            : '0 0 8px rgba(52,199,89,0.3), inset 0 0 4px rgba(52,199,89,0.1)',
         }}>
           {isPlaying ? '■' : '▶'}
         </button>
-        <button onClick={clearAll} style={styles.neonBtn}>✕</button>
-      </div>
-
-      {/* Pattern selector dropdown */}
-      <div style={styles.presets}>
-        <span style={styles.presetLabel}>PATTERN</span>
-        <select
-          style={styles.patternSelect}
-          value=""
-          onChange={e => {
-            const idx = Number(e.target.value);
-            if (!isNaN(idx)) loadPreset(idx);
-          }}
+        <button onClick={clearAll} style={styles.headerBtn}>✕</button>
+        <div
+          style={{ ...styles.displayBox, cursor: 'pointer', position: 'relative' as const }}
+          onClick={() => { setShowTempoSlider(!showTempoSlider); setShowSwingSlider(false); }}
         >
-          <option value="" disabled>Select a pattern…</option>
-          {PRESET_GROUPS.map(group => (
-            <optgroup key={group.label} label={group.label}>
-              {group.patterns.map(p => {
-                const idx = PRESETS.indexOf(p);
-                return <option key={idx} value={idx}>{p.name}</option>;
-              })}
-            </optgroup>
-          ))}
-        </select>
+          <div style={styles.displayLabel}>BPM</div>
+          <div style={styles.displayValue}>{bpm}</div>
+          {showTempoSlider && (
+            <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
+              <input type="range" min="60" max="200" value={bpm}
+                onChange={e => setBpm(Number(e.target.value))} style={styles.popupSlider} />
+            </div>
+          )}
+        </div>
+        <div
+          style={{ ...styles.displayBox, cursor: 'pointer' }}
+          onClick={toggleBars}
+        >
+          <div style={styles.displayLabel}>BARS</div>
+          <div style={styles.displayValue}>{stepCount / 16}</div>
+        </div>
+        <div
+          style={{ ...styles.displayBox, cursor: 'pointer', position: 'relative' as const }}
+          onClick={() => { setShowSwingSlider(!showSwingSlider); setShowTempoSlider(false); }}
+        >
+          <div style={styles.displayLabel}>SWG</div>
+          <div style={styles.displayValue}>{Math.round(swing * 100)}</div>
+          {showSwingSlider && (
+            <div style={styles.dropdownSlider} onClick={e => e.stopPropagation()}>
+              <input type="range" min="0" max="100" value={swing * 100}
+                onChange={e => setSwing(Number(e.target.value) / 100)} style={styles.popupSlider} />
+            </div>
+          )}
+        </div>
+        <div style={styles.displayBox}>
+          <div style={styles.displayLabel}>STEP</div>
+          <div style={styles.displayValue}>{currentStep >= 0 ? currentStep + 1 : '--'}</div>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -421,7 +397,7 @@ export default function App() {
 
       {/* Step LEDs */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: activeTab === 'drums' ? 140 : 60, flexShrink: 0 }} />
+        <div style={{ width: activeTab === 'drums' ? 120 : 44, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepLed,
@@ -434,7 +410,7 @@ export default function App() {
 
       {/* Beat numbers */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: activeTab === 'drums' ? 140 : 60, flexShrink: 0 }} />
+        <div style={{ width: activeTab === 'drums' ? 120 : 44, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepNumber,
@@ -450,6 +426,27 @@ export default function App() {
       {/* Drum grid */}
       {activeTab === 'drums' && (
         <div style={styles.grid}>
+          {/* Pattern selector — compact */}
+          <div style={styles.presetRow}>
+            <select
+              style={styles.patternSelect}
+              value=""
+              onChange={e => {
+                const idx = Number(e.target.value);
+                if (!isNaN(idx)) loadPreset(idx);
+              }}
+            >
+              <option value="" disabled>Pattern…</option>
+              {PRESET_GROUPS.map(group => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.patterns.map(p => {
+                    const idx = PRESETS.indexOf(p);
+                    return <option key={idx} value={idx}>{p.name}</option>;
+                  })}
+                </optgroup>
+              ))}
+            </select>
+          </div>
           {tracks.map((track, trackIdx) => (
             <div key={trackIdx} style={styles.trackRow}>
               <div style={styles.trackControls}>
@@ -505,43 +502,49 @@ export default function App() {
       {/* Bass piano roll */}
       {activeTab === 'bass' && (
         <div style={styles.grid}>
-          {BASS_ROLL_NOTES.map((note, rowIdx) => (
-            <div key={note} style={styles.trackRow}>
-              <div style={{
-                ...styles.bassNoteLabel,
-                background: BLACK_KEYS.has(note) ? '#1a1a1a' : '#2a2a2a',
-                color: BLACK_KEYS.has(note) ? ACCENT : '#ccc',
-              }}>
-                {BASS_ROLL_LABELS[rowIdx]}
+          <div style={{
+            maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' as const,
+            display: 'flex', flexDirection: 'column' as const, gap: 1,
+          }}>
+            {BASS_ROLL_NOTES.map((note, rowIdx) => (
+              <div key={note} style={styles.trackRow}>
+                <div style={{
+                  ...styles.bassNoteLabel,
+                  background: isBlackKey(note) ? '#1a1a1a' : '#2a2a2a',
+                  color: isBlackKey(note) ? ACCENT : '#ccc',
+                  borderLeft: note % 12 === 0 ? `2px solid ${ACCENT}44` : 'none',
+                }}>
+                  {BASS_ROLL_LABELS[rowIdx]}
+                </div>
+                <div style={styles.stepsRow}>
+                  {Array.from({ length: stepCount }, (_, stepIdx) => {
+                    const isActive = bassSteps[stepIdx]?.note === note;
+                    return (
+                      <button
+                        key={stepIdx}
+                        onClick={() => toggleBassNote(stepIdx, note)}
+                        style={{
+                          ...styles.stepButton,
+                          ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                          background: isActive
+                            ? ACCENT
+                            : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                          borderColor: stepIdx === currentStep ? '#fff' : isActive ? ACCENT : '#3a3a3a',
+                          boxShadow: isActive
+                            ? `0 0 6px ${ACCENT}40`
+                            : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-              <div style={styles.stepsRow}>
-                {Array.from({ length: stepCount }, (_, stepIdx) => {
-                  const isActive = bassSteps[stepIdx]?.note === note;
-                  return (
-                    <button
-                      key={stepIdx}
-                      onClick={() => toggleBassNote(stepIdx, note)}
-                      style={{
-                        ...styles.stepButton,
-                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
-                        background: isActive
-                          ? ACCENT
-                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
-                        borderColor: stepIdx === currentStep ? '#fff' : isActive ? ACCENT : '#3a3a3a',
-                        boxShadow: isActive
-                          ? `0 0 6px ${ACCENT}40`
-                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
           {/* Bass controls */}
           <div style={styles.bassControls}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600, marginRight: 4 }}>WAVE</span>
+              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600, marginRight: 2 }}>WAVE</span>
               {(['sine', 'square', 'sawtooth', 'triangle'] as BassWaveform[]).map(w => (
                 <button key={w} onClick={() => setBassSettings(s => ({ ...s, waveform: w }))}
                   style={{
@@ -554,12 +557,12 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1 }}>
-              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600 }}>CUT</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600 }}>CUT</span>
               <input type="range" min="80" max="8000" value={bassSettings.cutoff}
                 onChange={e => setBassSettings(s => ({ ...s, cutoff: Number(e.target.value) }))}
                 style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
-              <span style={{ fontSize: 9, color: '#555', letterSpacing: 2, fontWeight: 600 }}>RES</span>
+              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600 }}>RES</span>
               <input type="range" min="50" max="2000" value={bassSettings.resonance * 100}
                 onChange={e => setBassSettings(s => ({ ...s, resonance: Number(e.target.value) / 100 }))}
                 style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
@@ -569,6 +572,14 @@ export default function App() {
       )}
 
       <div style={styles.bottomBar} />
+
+      {/* Footer */}
+      <div style={styles.footer}>
+        <a href="https://github.com/m0oz" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>
+          m0oz
+        </a>
+        {' \u00B7 '}MIT License
+      </div>
 
       {/* Portrait orientation overlay */}
       <style>{`
@@ -692,37 +703,43 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: FONT,
     maxWidth: 1200,
     margin: '0 auto',
-    padding: '20px',
+    padding: '6px 8px',
     color: '#e0e0e0',
     minHeight: '100vh',
     background: 'linear-gradient(180deg, #1a1a1a 0%, #111 100%)',
   },
   header: {
     display: 'flex',
-    justifyContent: 'space-between',
+    gap: 6,
     alignItems: 'center',
-    padding: '16px 24px',
+    padding: '6px 10px',
     background: 'linear-gradient(180deg, #2a2a2a, #1e1e1e)',
-    borderRadius: '12px 12px 0 0',
+    borderRadius: '10px 10px 0 0',
     border: '1px solid #333',
     borderBottom: 'none',
   },
-  brandSection: { display: 'flex', flexDirection: 'column', gap: 2 },
   brandName: {
-    fontSize: 28, fontWeight: 900, color: ACCENT, letterSpacing: 4,
-    textShadow: `0 0 20px ${ACCENT}80`, fontFamily: FONT,
+    fontSize: 18, fontWeight: 900, color: ACCENT, letterSpacing: 3,
+    textShadow: `0 0 16px ${ACCENT}80`, fontFamily: FONT, marginRight: 4,
   },
-  brandSub: { fontSize: 9, letterSpacing: 6, color: '#666', fontWeight: 500 },
-  displaySection: { display: 'flex', gap: 12 },
-  display: {
-    background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 6,
-    padding: '8px 14px', textAlign: 'center' as const, minWidth: 60,
-    userSelect: 'none' as const,
+  headerBtn: {
+    width: 36, height: 36, borderRadius: 6, fontSize: 14,
+    background: '#1a1a1a', border: '1.5px solid #444', color: '#666',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: FONT, fontWeight: 700, padding: 0, flexShrink: 0,
+    boxShadow: '0 0 6px rgba(100,100,100,0.2)',
+    transition: 'all 0.15s',
   },
-  displayLabel: { fontSize: 8, color: '#555', letterSpacing: 2, marginBottom: 4, fontWeight: 600 },
+  displayBox: {
+    background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 5,
+    padding: '2px 0', textAlign: 'center' as const, width: 36, height: 36,
+    display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+    userSelect: 'none' as const, flexShrink: 0, boxSizing: 'border-box' as const,
+  },
+  displayLabel: { fontSize: 7, color: '#555', letterSpacing: 1.5, fontWeight: 600, lineHeight: 1 },
   displayValue: {
-    fontSize: 18, color: ACCENT, fontFamily: MONO, fontWeight: 600,
-    textShadow: `0 0 10px ${ACCENT}66`,
+    fontSize: 14, color: ACCENT, fontFamily: MONO, fontWeight: 600,
+    textShadow: `0 0 10px ${ACCENT}66`, lineHeight: 1.2,
   },
   dropdownSlider: {
     position: 'absolute' as const,
@@ -732,70 +749,55 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#2a2a2a',
     border: '1px solid #444',
     borderRadius: 8,
-    padding: '12px 16px',
+    padding: '10px 14px',
     zIndex: 100,
-    marginTop: 6,
-    minWidth: 160,
+    marginTop: 4,
+    minWidth: 140,
     boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
   },
   popupSlider: {
     width: '100%', accentColor: ACCENT, cursor: 'pointer',
   },
-  controls: {
-    display: 'flex', gap: 8, alignItems: 'center', padding: '10px 24px',
-    background: '#1e1e1e', borderLeft: '1px solid #333', borderRight: '1px solid #333',
+  presetRow: {
+    display: 'flex', alignItems: 'center', marginBottom: 2,
   },
-  neonBtn: {
-    width: 38, height: 38, borderRadius: 8, fontSize: 16,
-    background: '#1a1a1a', border: '1.5px solid #444', color: '#666',
-    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontFamily: FONT, fontWeight: 700, padding: 0,
-    boxShadow: '0 0 6px rgba(100,100,100,0.2)',
-    transition: 'all 0.15s',
-  },
-  presets: {
-    display: 'flex', gap: 6, alignItems: 'center', padding: '12px 24px',
-    background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
-    flexWrap: 'wrap' as const,
-  },
-  presetLabel: { fontSize: 9, letterSpacing: 2, color: '#555', marginRight: 8, fontWeight: 600 },
   patternSelect: {
-    fontFamily: FONT, fontSize: 13, color: '#e0e0e0',
+    fontFamily: FONT, fontSize: 11, color: '#e0e0e0',
     background: '#1a1a1a',
-    border: '1px solid #3a3a3a', borderRadius: 6, padding: '8px 12px',
-    cursor: 'pointer', fontWeight: 500, flex: 1, maxWidth: 320,
+    border: '1px solid #3a3a3a', borderRadius: 4, padding: '3px 8px',
+    cursor: 'pointer', fontWeight: 500, maxWidth: 240,
     outline: 'none',
   },
   stepIndicators: {
-    display: 'flex', gap: 3, padding: '6px 24px',
+    display: 'flex', gap: 3, padding: '3px 10px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
     alignItems: 'center',
   },
   stepLed: {
-    flex: 1, height: 4, borderRadius: 2,
+    flex: 1, height: 3, borderRadius: 1.5,
     transition: 'background 0.05s, box-shadow 0.05s',
   },
-  stepNumber: { flex: 1, textAlign: 'center' as const, fontSize: 9, fontFamily: MONO },
+  stepNumber: { flex: 1, textAlign: 'center' as const, fontSize: 8, fontFamily: MONO },
   grid: {
-    display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 24px',
+    display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 10px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
   },
-  trackRow: { display: 'flex', gap: 6, alignItems: 'center' },
+  trackRow: { display: 'flex', gap: 4, alignItems: 'center' },
   trackControls: {
-    width: 140, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4,
+    width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
   },
   trackLabel: {
-    fontSize: 10, fontWeight: 700, color: '#ccc', letterSpacing: 0.5,
-    fontFamily: FONT, background: 'none', border: 'none', borderLeft: '3px solid',
-    cursor: 'pointer', textAlign: 'left' as const, padding: '3px 3px 3px 6px',
+    fontSize: 9, fontWeight: 700, color: '#ccc', letterSpacing: 0.5,
+    fontFamily: FONT, background: 'none', border: 'none', borderLeft: '2px solid',
+    cursor: 'pointer', textAlign: 'left' as const, padding: '2px 2px 2px 4px',
     whiteSpace: 'nowrap' as const, overflow: 'hidden',
     display: 'flex', alignItems: 'center', width: '100%',
   },
-  stepsRow: { display: 'flex', gap: 3, flex: 1 },
+  stepsRow: { display: 'flex', gap: 2, flex: 1 },
   stepButton: {
-    flex: 1, aspectRatio: '1', border: '1px solid', borderRadius: 3,
+    flex: 1, aspectRatio: '1', border: '1px solid', borderRadius: 2,
     cursor: 'pointer', transition: 'background 0.05s, border-color 0.05s',
-    padding: 0, maxHeight: 26, minWidth: 0,
+    padding: 0, maxHeight: 22, minWidth: 0,
   },
   // Popup overlay
   overlay: {
@@ -869,42 +871,50 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer', letterSpacing: 1,
   },
   bottomBar: {
-    height: 8,
+    height: 4,
     background: 'linear-gradient(180deg, #1e1e1e, #2a2a2a)',
-    borderRadius: '0 0 12px 12px',
+    borderRadius: '0 0 10px 10px',
     border: '1px solid #333',
     borderTop: 'none',
   },
   // Tab bar
   tabBar: {
-    display: 'flex', gap: 0, padding: '0 24px',
+    display: 'flex', gap: 0, padding: '0 10px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
   },
   tabBtn: {
-    fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: 3,
+    fontFamily: FONT, fontSize: 10, fontWeight: 700, letterSpacing: 3,
     background: 'none', border: 'none', borderBottom: '2px solid transparent',
-    padding: '10px 20px', cursor: 'pointer', transition: 'all 0.15s',
+    padding: '6px 16px', cursor: 'pointer', transition: 'all 0.15s',
   },
   // Tap record button
   tapRecBtn: {
-    width: 28, height: 28, borderRadius: 14, fontSize: 14,
+    width: 22, height: 22, borderRadius: 11, fontSize: 12,
     background: '#1a1a1a', border: '1.5px solid #444', color: '#555',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: 0, flexShrink: 0, transition: 'all 0.15s', lineHeight: 1,
   },
   // Bass piano roll
   bassNoteLabel: {
-    width: 60, flexShrink: 0, fontSize: 10, fontWeight: 700,
-    fontFamily: MONO, padding: '4px 6px', borderRadius: 2,
+    width: 44, flexShrink: 0, fontSize: 9, fontWeight: 700,
+    fontFamily: MONO, padding: '2px 4px', borderRadius: 2,
     textAlign: 'center' as const, letterSpacing: 1,
   },
   bassControls: {
-    display: 'flex', gap: 16, alignItems: 'center', paddingTop: 10,
+    display: 'flex', gap: 12, alignItems: 'center', paddingTop: 6,
     flexWrap: 'wrap' as const,
   },
   waveBtn: {
-    fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+    fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: 1,
     background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4,
-    padding: '4px 8px', cursor: 'pointer', transition: 'all 0.15s',
+    padding: '3px 6px', cursor: 'pointer', transition: 'all 0.15s',
+  },
+  // Footer
+  footer: {
+    textAlign: 'center' as const, padding: '8px 0 4px', fontSize: 10,
+    color: '#444', letterSpacing: 1,
+  },
+  footerLink: {
+    color: '#666', textDecoration: 'none',
   },
 };
