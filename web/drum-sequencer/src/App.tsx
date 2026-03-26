@@ -274,7 +274,7 @@ export default function App() {
     }
   }, [tapRecTrack, currentStep, scheduler]);
 
-  // Detect loop wrap → clear track for fresh take
+  // Detect loop wrap → stop recording, keep the hits
   useEffect(() => {
     if (tapRecTrack === null || currentStep < 0) {
       prevStepRef.current = currentStep;
@@ -283,10 +283,8 @@ export default function App() {
     const prev = prevStepRef.current;
     prevStepRef.current = currentStep;
     if (prev >= 0 && currentStep < prev) {
-      // Loop wrapped — clear for redo
-      setTracks(tr => tr.map((t, i) =>
-        i === tapRecTrack ? { ...t, steps: t.steps.map(() => false) } : t
-      ));
+      // Loop wrapped — finalize recording, keep steps as-is
+      setTapRecTrack(null);
     }
   }, [currentStep, tapRecTrack]);
 
