@@ -578,7 +578,7 @@ export default function App() {
         <a href="https://github.com/m0oz" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>
           m0oz
         </a>
-        {' \u00B7 '}MIT License
+        {' \u00B7 '}GPL License
       </div>
 
       {/* Portrait orientation overlay */}
