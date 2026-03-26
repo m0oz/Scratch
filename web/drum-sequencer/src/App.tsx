@@ -15,19 +15,52 @@ const ACCENT = '#00e5cc';
 const SCHEDULE_AHEAD = 0.1;
 const LOOKAHEAD = 25;
 const STORAGE_KEY = 'dr808-saved-pattern';
+const DRUM_PAGE_SIZE = 4;
 
-// Piano roll rows: chromatic, C4 (top) down to C1 (bottom)
+// Note names
 const NOTE_NAMES_CHROM = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const BASS_ROLL_NOTES: number[] = [];
-const BASS_ROLL_LABELS: string[] = [];
-// C4(60) down to C1(24) — 3 octaves chromatic = 37 notes
-for (let midi = 60; midi >= 24; midi--) {
-  BASS_ROLL_NOTES.push(midi);
-  const octave = Math.floor(midi / 12) - 1;
-  BASS_ROLL_LABELS.push(NOTE_NAMES_CHROM[midi % 12] + octave);
+function isBlackKey(midi: number): boolean { return [1, 3, 6, 8, 10].includes(midi % 12); }
+function noteName(midi: number): string {
+  return NOTE_NAMES_CHROM[midi % 12] + (Math.floor(midi / 12) - 1);
 }
-const BLACK_KEYS = new Set([1, 3, 6, 8, 10]); // semitone offsets for black keys
-function isBlackKey(midi: number): boolean { return BLACK_KEYS.has(midi % 12); }
+
+// Scales: intervals from root
+interface ScaleDef { name: string; intervals: number[]; }
+const SCALES: ScaleDef[] = [
+  { name: 'Minor', intervals: [0, 2, 3, 5, 7, 8, 10] },
+  { name: 'Major', intervals: [0, 2, 4, 5, 7, 9, 11] },
+  { name: 'Dorian', intervals: [0, 2, 3, 5, 7, 9, 10] },
+  { name: 'Phrygian', intervals: [0, 1, 3, 5, 7, 8, 10] },
+  { name: 'Mixolydian', intervals: [0, 2, 4, 5, 7, 9, 10] },
+  { name: 'Minor Pentatonic', intervals: [0, 3, 5, 7, 10] },
+  { name: 'Blues', intervals: [0, 3, 5, 6, 7, 10] },
+  { name: 'Harmonic Minor', intervals: [0, 2, 3, 5, 7, 8, 11] },
+  { name: 'Phrygian Dominant', intervals: [0, 1, 4, 5, 7, 8, 10] },
+  { name: 'Whole Tone', intervals: [0, 2, 4, 6, 8, 10] },
+  { name: 'Chromatic', intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+];
+const ROOT_NOTES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // C through B
+const ROOT_LABELS = NOTE_NAMES_CHROM;
+
+// Build bass notes for a key + scale across given octave range
+function buildBassNotes(rootPc: number, scale: ScaleDef, baseOctave: number): number[] {
+  // One octave of scale notes, top to bottom
+  const notes: number[] = [];
+  const rootMidi = (baseOctave + 1) * 12 + rootPc; // base octave MIDI
+  // Go from top (root + 12) down to root
+  for (let i = scale.intervals.length - 1; i >= 0; i--) {
+    notes.push(rootMidi + 12 + scale.intervals[i]); // upper octave note
+  }
+  // Add root of upper octave at top if not already there
+  if (notes[0] !== rootMidi + 12) notes.unshift(rootMidi + 12);
+  // Add all notes of base octave
+  for (let i = scale.intervals.length - 1; i >= 0; i--) {
+    notes.push(rootMidi + scale.intervals[i]);
+  }
+  // Deduplicate and sort descending
+  const unique = [...new Set(notes)].sort((a, b) => b - a);
+  return unique;
+}
 
 interface SavedState {
   tracks: Track[];
@@ -84,6 +117,20 @@ export default function App() {
 
   // Tap-record state
   const [tapRecTrack, setTapRecTrack] = useState<number | null>(null);
+
+  // Paging state
+  const [drumPage, setDrumPage] = useState(0);
+  const drumPageCount = Math.ceil(tracks.length / DRUM_PAGE_SIZE);
+  const visibleTracks = tracks.slice(drumPage * DRUM_PAGE_SIZE, (drumPage + 1) * DRUM_PAGE_SIZE);
+  const visibleTrackOffset = drumPage * DRUM_PAGE_SIZE;
+
+  // Bass key/scale state
+  const [bassRoot, setBassRoot] = useState(0); // C
+  const [bassScaleIdx, setBassScaleIdx] = useState(0); // Minor
+  const [bassOctave, setBassOctave] = useState(2); // base octave
+  const bassNotes = buildBassNotes(bassRoot, SCALES[bassScaleIdx], bassOctave);
+  const bassOctaveMin = 1;
+  const bassOctaveMax = 4;
 
   // Refs
   const tracksRef = useRef(tracks);
@@ -326,22 +373,14 @@ export default function App() {
 
   const popupTrack = trackPopup !== null ? tracks[trackPopup] : null;
 
+  const trackControlWidth = activeTab === 'drums' ? 120 : 44;
+
   return (
     <div style={styles.container}>
-      {/* Header — single compact row */}
+      {/* Header — brand left, controls right-aligned */}
       <div style={styles.header}>
         <div style={styles.brandName}>8MO8</div>
-        <button onClick={handlePlay} style={{
-          ...styles.headerBtn,
-          borderColor: isPlaying ? '#ff3b30' : '#34c759',
-          color: isPlaying ? '#ff3b30' : '#34c759',
-          boxShadow: isPlaying
-            ? '0 0 8px rgba(255,59,48,0.3), inset 0 0 4px rgba(255,59,48,0.1)'
-            : '0 0 8px rgba(52,199,89,0.3), inset 0 0 4px rgba(52,199,89,0.1)',
-        }}>
-          {isPlaying ? '■' : '▶'}
-        </button>
-        <button onClick={clearAll} style={styles.headerBtn}>✕</button>
+        <div style={{ flex: 1 }} />
         <div
           style={{ ...styles.displayBox, cursor: 'pointer', position: 'relative' as const }}
           onClick={() => { setShowTempoSlider(!showTempoSlider); setShowSwingSlider(false); }}
@@ -379,6 +418,17 @@ export default function App() {
           <div style={styles.displayLabel}>STEP</div>
           <div style={styles.displayValue}>{currentStep >= 0 ? currentStep + 1 : '--'}</div>
         </div>
+        <button onClick={clearAll} style={styles.headerBtn}>✕</button>
+        <button onClick={handlePlay} style={{
+          ...styles.headerBtn,
+          borderColor: isPlaying ? '#ff3b30' : '#34c759',
+          color: isPlaying ? '#ff3b30' : '#34c759',
+          boxShadow: isPlaying
+            ? '0 0 8px rgba(255,59,48,0.3), inset 0 0 4px rgba(255,59,48,0.1)'
+            : '0 0 8px rgba(52,199,89,0.3), inset 0 0 4px rgba(52,199,89,0.1)',
+        }}>
+          {isPlaying ? '■' : '▶'}
+        </button>
       </div>
 
       {/* Tab bar */}
@@ -395,179 +445,201 @@ export default function App() {
         ))}
       </div>
 
+      {/* Drum controls row: pattern selector + page buttons */}
+      {activeTab === 'drums' && (
+        <div style={styles.controlRow}>
+          <select
+            style={styles.patternSelect}
+            value=""
+            onChange={e => {
+              const idx = Number(e.target.value);
+              if (!isNaN(idx)) loadPreset(idx);
+            }}
+          >
+            <option value="" disabled>Pattern…</option>
+            {PRESET_GROUPS.map(group => (
+              <optgroup key={group.label} label={group.label}>
+                {group.patterns.map(p => {
+                  const idx = PRESETS.indexOf(p);
+                  return <option key={idx} value={idx}>{p.name}</option>;
+                })}
+              </optgroup>
+            ))}
+          </select>
+          <div style={{ flex: 1 }} />
+          {drumPageCount > 1 && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <button style={styles.pageBtn}
+                onClick={() => setDrumPage(p => Math.max(0, p - 1))}
+                disabled={drumPage === 0}>▲</button>
+              <span style={{ fontSize: 9, color: '#555', fontFamily: MONO }}>{drumPage + 1}/{drumPageCount}</span>
+              <button style={styles.pageBtn}
+                onClick={() => setDrumPage(p => Math.min(drumPageCount - 1, p + 1))}
+                disabled={drumPage >= drumPageCount - 1}>▼</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bass controls row: key/scale selector + synth controls + page buttons */}
+      {activeTab === 'bass' && (
+        <div style={styles.controlRow}>
+          <select style={styles.patternSelect} value={bassRoot}
+            onChange={e => setBassRoot(Number(e.target.value))}>
+            {ROOT_NOTES.map(n => (
+              <option key={n} value={n}>{ROOT_LABELS[n]}</option>
+            ))}
+          </select>
+          <select style={styles.patternSelect} value={bassScaleIdx}
+            onChange={e => setBassScaleIdx(Number(e.target.value))}>
+            {SCALES.map((s, i) => (
+              <option key={i} value={i}>{s.name}</option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+            <span style={{ fontSize: 8, color: '#555', letterSpacing: 1, fontWeight: 600 }}>WAVE</span>
+            {(['sine', 'square', 'sawtooth', 'triangle'] as BassWaveform[]).map(w => (
+              <button key={w} onClick={() => setBassSettings(s => ({ ...s, waveform: w }))}
+                style={{
+                  ...styles.waveBtn,
+                  borderColor: bassSettings.waveform === w ? ACCENT : '#3a3a3a',
+                  color: bassSettings.waveform === w ? ACCENT : '#888',
+                  boxShadow: bassSettings.waveform === w ? `0 0 6px ${ACCENT}40` : 'none',
+                }}>
+                {w === 'sine' ? 'SIN' : w === 'square' ? 'SQR' : w === 'sawtooth' ? 'SAW' : 'TRI'}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+            <span style={{ fontSize: 8, color: '#555', letterSpacing: 1, fontWeight: 600 }}>CUT</span>
+            <input type="range" min="80" max="8000" value={bassSettings.cutoff}
+              onChange={e => setBassSettings(s => ({ ...s, cutoff: Number(e.target.value) }))}
+              style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
+            <span style={{ fontSize: 8, color: '#555', letterSpacing: 1, fontWeight: 600 }}>RES</span>
+            <input type="range" min="50" max="2000" value={bassSettings.resonance * 100}
+              onChange={e => setBassSettings(s => ({ ...s, resonance: Number(e.target.value) / 100 }))}
+              style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button style={styles.pageBtn}
+              onClick={() => setBassOctave(o => Math.max(bassOctaveMin, o - 1))}
+              disabled={bassOctave <= bassOctaveMin}>▼</button>
+            <span style={{ fontSize: 9, color: '#555', fontFamily: MONO }}>O{bassOctave}</span>
+            <button style={styles.pageBtn}
+              onClick={() => setBassOctave(o => Math.min(bassOctaveMax, o + 1))}
+              disabled={bassOctave >= bassOctaveMax}>▲</button>
+          </div>
+        </div>
+      )}
+
       {/* Step LEDs */}
       <div style={styles.stepIndicators}>
-        <div style={{ width: activeTab === 'drums' ? 120 : 44, flexShrink: 0 }} />
+        <div style={{ width: trackControlWidth, flexShrink: 0 }} />
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepLed,
             ...(i % 16 === 0 && i > 0 ? { marginLeft: 6 } : {}),
-            background: i === currentStep ? ACCENT : i % 4 === 0 ? '#555' : '#2a2a2a',
+            background: i === currentStep ? ACCENT : '#2a2a2a',
             boxShadow: i === currentStep ? `0 0 8px ${ACCENT}` : 'none',
           }} />
-        ))}
-      </div>
-
-      {/* Beat numbers */}
-      <div style={styles.stepIndicators}>
-        <div style={{ width: activeTab === 'drums' ? 120 : 44, flexShrink: 0 }} />
-        {Array.from({ length: stepCount }, (_, i) => (
-          <div key={i} style={{
-            ...styles.stepNumber,
-            ...(i % 16 === 0 && i > 0 ? { marginLeft: 6 } : {}),
-            color: i % 16 === 0 ? '#888' : i % 4 === 0 ? '#555' : '#333',
-            fontWeight: i % 16 === 0 ? 700 : 400,
-          }}>
-            {i % 4 === 0 ? i / 4 + 1 : '·'}
-          </div>
         ))}
       </div>
 
       {/* Drum grid */}
       {activeTab === 'drums' && (
         <div style={styles.grid}>
-          {/* Pattern selector — compact */}
-          <div style={styles.presetRow}>
-            <select
-              style={styles.patternSelect}
-              value=""
-              onChange={e => {
-                const idx = Number(e.target.value);
-                if (!isNaN(idx)) loadPreset(idx);
-              }}
-            >
-              <option value="" disabled>Pattern…</option>
-              {PRESET_GROUPS.map(group => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.patterns.map(p => {
-                    const idx = PRESETS.indexOf(p);
-                    return <option key={idx} value={idx}>{p.name}</option>;
-                  })}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          {tracks.map((track, trackIdx) => (
-            <div key={trackIdx} style={styles.trackRow}>
-              <div style={styles.trackControls}>
-                <button
-                  className={tapRecTrack === trackIdx ? 'tap-rec-armed' : ''}
-                  onClick={() => handleTapRec(trackIdx)}
-                  style={{
-                    ...styles.tapRecBtn,
-                    borderColor: tapRecTrack === trackIdx ? '#ff3b30' : '#444',
-                    color: tapRecTrack === trackIdx ? '#ff3b30' : '#555',
-                    boxShadow: tapRecTrack === trackIdx ? '0 0 8px rgba(255,59,48,0.5)' : 'none',
-                  }}
-                >●</button>
-                <button
-                  style={{ ...styles.trackLabel, borderLeftColor: track.color }}
-                  onClick={() => {
-                    handlePreview(track.soundId, track.volume, track.decay);
-                    setTrackPopup(trackPopup === trackIdx ? null : trackIdx);
-                    setShowTempoSlider(false);
-                    setShowSwingSlider(false);
-                  }}
-                >
-                  {track.name}
-                  <span style={{ color: '#666', fontSize: 8, marginLeft: 4 }}>
-                    {getSoundLabel(track.soundId)}
-                  </span>
-                </button>
-              </div>
-              <div style={styles.stepsRow}>
-                {track.steps.map((active, stepIdx) => (
+          {visibleTracks.map((track, visIdx) => {
+            const trackIdx = visibleTrackOffset + visIdx;
+            return (
+              <div key={trackIdx} style={styles.trackRow}>
+                <div style={styles.trackControls}>
                   <button
-                    key={stepIdx}
-                    onClick={() => toggleStep(trackIdx, stepIdx)}
+                    className={tapRecTrack === trackIdx ? 'tap-rec-armed' : ''}
+                    onClick={() => handleTapRec(trackIdx)}
                     style={{
-                      ...styles.stepButton,
-                      ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
-                      background: active
-                        ? track.color
-                        : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
-                      borderColor: stepIdx === currentStep ? '#fff' : active ? track.color : '#3a3a3a',
-                      boxShadow: active
-                        ? `0 0 6px ${track.color}40`
-                        : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                      ...styles.tapRecBtn,
+                      borderColor: tapRecTrack === trackIdx ? '#ff3b30' : '#444',
+                      color: tapRecTrack === trackIdx ? '#ff3b30' : '#555',
+                      boxShadow: tapRecTrack === trackIdx ? '0 0 8px rgba(255,59,48,0.5)' : 'none',
                     }}
-                  />
-                ))}
+                  >●</button>
+                  <button
+                    style={{ ...styles.trackLabel, borderLeftColor: track.color }}
+                    onClick={() => {
+                      handlePreview(track.soundId, track.volume, track.decay);
+                      setTrackPopup(trackPopup === trackIdx ? null : trackIdx);
+                      setShowTempoSlider(false);
+                      setShowSwingSlider(false);
+                    }}
+                  >
+                    {track.name}
+                    <span style={{ color: '#666', fontSize: 8, marginLeft: 4 }}>
+                      {getSoundLabel(track.soundId)}
+                    </span>
+                  </button>
+                </div>
+                <div style={styles.stepsRow}>
+                  {track.steps.map((active, stepIdx) => (
+                    <button
+                      key={stepIdx}
+                      onClick={() => toggleStep(trackIdx, stepIdx)}
+                      style={{
+                        ...styles.stepButton,
+                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                        background: active
+                          ? track.color
+                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                        borderColor: stepIdx === currentStep ? '#fff' : active ? track.color : '#3a3a3a',
+                        boxShadow: active
+                          ? `0 0 6px ${track.color}40`
+                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Bass piano roll */}
       {activeTab === 'bass' && (
         <div style={styles.grid}>
-          <div style={{
-            maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' as const,
-            display: 'flex', flexDirection: 'column' as const, gap: 1,
-          }}>
-            {BASS_ROLL_NOTES.map((note, rowIdx) => (
-              <div key={note} style={styles.trackRow}>
-                <div style={{
-                  ...styles.bassNoteLabel,
-                  background: isBlackKey(note) ? '#1a1a1a' : '#2a2a2a',
-                  color: isBlackKey(note) ? ACCENT : '#ccc',
-                  borderLeft: note % 12 === 0 ? `2px solid ${ACCENT}44` : 'none',
-                }}>
-                  {BASS_ROLL_LABELS[rowIdx]}
-                </div>
-                <div style={styles.stepsRow}>
-                  {Array.from({ length: stepCount }, (_, stepIdx) => {
-                    const isActive = bassSteps[stepIdx]?.note === note;
-                    return (
-                      <button
-                        key={stepIdx}
-                        onClick={() => toggleBassNote(stepIdx, note)}
-                        style={{
-                          ...styles.stepButton,
-                          ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
-                          background: isActive
-                            ? ACCENT
-                            : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
-                          borderColor: stepIdx === currentStep ? '#fff' : isActive ? ACCENT : '#3a3a3a',
-                          boxShadow: isActive
-                            ? `0 0 6px ${ACCENT}40`
-                            : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
-                        }}
-                      />
-                    );
-                  })}
-                </div>
+          {bassNotes.map(note => (
+            <div key={note} style={styles.trackRow}>
+              <div style={{
+                ...styles.bassNoteLabel,
+                background: isBlackKey(note) ? '#1a1a1a' : '#2a2a2a',
+                color: isBlackKey(note) ? ACCENT : '#ccc',
+                borderLeft: note % 12 === bassRoot ? `2px solid ${ACCENT}44` : 'none',
+              }}>
+                {noteName(note)}
               </div>
-            ))}
-          </div>
-          {/* Bass controls */}
-          <div style={styles.bassControls}>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600, marginRight: 2 }}>WAVE</span>
-              {(['sine', 'square', 'sawtooth', 'triangle'] as BassWaveform[]).map(w => (
-                <button key={w} onClick={() => setBassSettings(s => ({ ...s, waveform: w }))}
-                  style={{
-                    ...styles.waveBtn,
-                    borderColor: bassSettings.waveform === w ? ACCENT : '#3a3a3a',
-                    color: bassSettings.waveform === w ? ACCENT : '#888',
-                    boxShadow: bassSettings.waveform === w ? `0 0 6px ${ACCENT}40` : 'none',
-                  }}>
-                  {w === 'sine' ? 'SIN' : w === 'square' ? 'SQR' : w === 'sawtooth' ? 'SAW' : 'TRI'}
-                </button>
-              ))}
+              <div style={styles.stepsRow}>
+                {Array.from({ length: stepCount }, (_, stepIdx) => {
+                  const isActive = bassSteps[stepIdx]?.note === note;
+                  return (
+                    <button
+                      key={stepIdx}
+                      onClick={() => toggleBassNote(stepIdx, note)}
+                      style={{
+                        ...styles.stepButton,
+                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                        background: isActive
+                          ? ACCENT
+                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                        borderColor: stepIdx === currentStep ? '#fff' : isActive ? ACCENT : '#3a3a3a',
+                        boxShadow: isActive
+                          ? `0 0 6px ${ACCENT}40`
+                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                      }}
+                    />
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
-              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600 }}>CUT</span>
-              <input type="range" min="80" max="8000" value={bassSettings.cutoff}
-                onChange={e => setBassSettings(s => ({ ...s, cutoff: Number(e.target.value) }))}
-                style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
-              <span style={{ fontSize: 8, color: '#555', letterSpacing: 2, fontWeight: 600 }}>RES</span>
-              <input type="range" min="50" max="2000" value={bassSettings.resonance * 100}
-                onChange={e => setBassSettings(s => ({ ...s, resonance: Number(e.target.value) / 100 }))}
-                style={{ flex: 1, accentColor: ACCENT, cursor: 'pointer' }} />
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
@@ -578,7 +650,7 @@ export default function App() {
         <a href="https://github.com/m0oz" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>
           m0oz
         </a>
-        {' \u00B7 '}GPL License
+        {' · '}GPL
       </div>
 
       {/* Portrait orientation overlay */}
@@ -710,9 +782,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   header: {
     display: 'flex',
-    gap: 6,
+    gap: 8,
     alignItems: 'center',
-    padding: '6px 10px',
+    padding: '8px 12px',
     background: 'linear-gradient(180deg, #2a2a2a, #1e1e1e)',
     borderRadius: '10px 10px 0 0',
     border: '1px solid #333',
@@ -720,10 +792,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   brandName: {
     fontSize: 18, fontWeight: 900, color: ACCENT, letterSpacing: 3,
-    textShadow: `0 0 16px ${ACCENT}80`, fontFamily: FONT, marginRight: 4,
+    textShadow: `0 0 16px ${ACCENT}80`, fontFamily: FONT,
   },
   headerBtn: {
-    width: 36, height: 36, borderRadius: 6, fontSize: 14,
+    width: 40, height: 40, borderRadius: 6, fontSize: 16,
     background: '#1a1a1a', border: '1.5px solid #444', color: '#666',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontFamily: FONT, fontWeight: 700, padding: 0, flexShrink: 0,
@@ -732,7 +804,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   displayBox: {
     background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 5,
-    padding: '2px 0', textAlign: 'center' as const, width: 36, height: 36,
+    padding: '2px 0', textAlign: 'center' as const, width: 40, height: 40,
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     userSelect: 'none' as const, flexShrink: 0, boxSizing: 'border-box' as const,
   },
@@ -758,15 +830,23 @@ const styles: Record<string, React.CSSProperties> = {
   popupSlider: {
     width: '100%', accentColor: ACCENT, cursor: 'pointer',
   },
-  presetRow: {
-    display: 'flex', alignItems: 'center', marginBottom: 2,
+  controlRow: {
+    display: 'flex', gap: 8, alignItems: 'center', padding: '4px 10px',
+    background: '#1c1c1c', borderLeft: '1px solid #333', borderRight: '1px solid #333',
+    flexWrap: 'wrap' as const,
   },
   patternSelect: {
     fontFamily: FONT, fontSize: 11, color: '#e0e0e0',
     background: '#1a1a1a',
     border: '1px solid #3a3a3a', borderRadius: 4, padding: '3px 8px',
-    cursor: 'pointer', fontWeight: 500, maxWidth: 240,
+    cursor: 'pointer', fontWeight: 500, maxWidth: 200,
     outline: 'none',
+  },
+  pageBtn: {
+    width: 24, height: 20, borderRadius: 3, fontSize: 10,
+    background: '#1a1a1a', border: '1px solid #3a3a3a', color: '#888',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 0, fontFamily: FONT, transition: 'all 0.15s',
   },
   stepIndicators: {
     display: 'flex', gap: 3, padding: '3px 10px',
@@ -777,7 +857,6 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1, height: 3, borderRadius: 1.5,
     transition: 'background 0.05s, box-shadow 0.05s',
   },
-  stepNumber: { flex: 1, textAlign: 'center' as const, fontSize: 8, fontFamily: MONO },
   grid: {
     display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 10px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
@@ -889,7 +968,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Tap record button
   tapRecBtn: {
-    width: 22, height: 22, borderRadius: 11, fontSize: 12,
+    width: 30, height: 30, borderRadius: 15, fontSize: 16,
     background: '#1a1a1a', border: '1.5px solid #444', color: '#555',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: 0, flexShrink: 0, transition: 'all 0.15s', lineHeight: 1,
@@ -900,10 +979,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: MONO, padding: '2px 4px', borderRadius: 2,
     textAlign: 'center' as const, letterSpacing: 1,
   },
-  bassControls: {
-    display: 'flex', gap: 12, alignItems: 'center', paddingTop: 6,
-    flexWrap: 'wrap' as const,
-  },
   waveBtn: {
     fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: 1,
     background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4,
@@ -911,10 +986,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Footer
   footer: {
-    textAlign: 'center' as const, padding: '8px 0 4px', fontSize: 10,
-    color: '#444', letterSpacing: 1,
+    textAlign: 'center' as const, padding: '4px 0 2px', fontSize: 8,
+    color: '#333', letterSpacing: 0.5,
   },
   footerLink: {
-    color: '#666', textDecoration: 'none',
+    color: '#555', textDecoration: 'none',
   },
 };
