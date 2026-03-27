@@ -8,9 +8,9 @@ function getCtx(): AudioContext {
   return audioCtx;
 }
 
-export function resumeAudio() {
+export async function resumeAudio(): Promise<void> {
   const ctx = getCtx();
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state === 'suspended') await ctx.resume();
 }
 
 export function getAudioContext(): AudioContext {
