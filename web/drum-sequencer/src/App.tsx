@@ -254,6 +254,7 @@ export default function App() {
     setTracks(preset.tracks.map(tr => ({ ...tr, steps: [...tr.steps] })));
     setBpm(preset.bpm);
     setStepCount(preset.steps);
+    setBassSteps(createBassSteps(preset.steps));
     setCurrentStep(-1);
     setTrackPopup(null);
   }, []);
@@ -347,11 +348,15 @@ export default function App() {
   // ── Bass editing ─────────────────────────────────────────
 
   const toggleBassNote = useCallback((stepIdx: number, note: number) => {
-    setBassSteps(prev => prev.map((bs, i) => {
-      if (i !== stepIdx) return bs;
-      // Toggle: if same note, clear it; otherwise set it
-      return { ...bs, note: bs.note === note ? 0 : note };
-    }));
+    setBassSteps(prev => {
+      // Ensure array covers the step index
+      const arr = prev.length > stepIdx ? [...prev] : [
+        ...prev,
+        ...Array.from({ length: stepIdx + 1 - prev.length }, () => ({ note: 0, accent: false, slide: false })),
+      ];
+      arr[stepIdx] = { ...arr[stepIdx], note: arr[stepIdx].note === note ? 0 : note };
+      return arr;
+    });
   }, []);
 
   // ── Helpers ────────────────────────────────────────────
