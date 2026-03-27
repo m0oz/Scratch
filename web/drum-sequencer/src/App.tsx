@@ -44,22 +44,15 @@ const ROOT_LABELS = NOTE_NAMES_CHROM;
 
 // Build bass notes for a key + scale across given octave range
 function buildBassNotes(rootPc: number, scale: ScaleDef, baseOctave: number): number[] {
-  // One octave of scale notes, top to bottom
-  const notes: number[] = [];
-  const rootMidi = (baseOctave + 1) * 12 + rootPc; // base octave MIDI
-  // Go from top (root + 12) down to root
-  for (let i = scale.intervals.length - 1; i >= 0; i--) {
-    notes.push(rootMidi + 12 + scale.intervals[i]); // upper octave note
-  }
-  // Add root of upper octave at top if not already there
-  if (notes[0] !== rootMidi + 12) notes.unshift(rootMidi + 12);
-  // Add all notes of base octave
-  for (let i = scale.intervals.length - 1; i >= 0; i--) {
-    notes.push(rootMidi + scale.intervals[i]);
+  // One octave: from root in baseOctave up to (but not including) root in next octave
+  // Plus the upper root as the top note
+  const rootMidi = (baseOctave + 1) * 12 + rootPc;
+  const notes: number[] = [rootMidi + 12]; // top note = root of next octave
+  for (const interval of scale.intervals) {
+    notes.push(rootMidi + interval);
   }
   // Deduplicate and sort descending
-  const unique = [...new Set(notes)].sort((a, b) => b - a);
-  return unique;
+  return [...new Set(notes)].sort((a, b) => b - a);
 }
 
 interface SavedState {
@@ -189,8 +182,8 @@ export default function App() {
     timerRef.current = window.setTimeout(scheduler, LOOKAHEAD);
   }, []);
 
-  const handlePlay = useCallback(() => {
-    resumeAudio();
+  const handlePlay = useCallback(async () => {
+    await resumeAudio();
     if (isPlayingRef.current) {
       isPlayingRef.current = false;
       setIsPlaying(false);
@@ -300,8 +293,8 @@ export default function App() {
 
   // ── Tap-record mode ───────────────────────────────────
 
-  const handleTapRec = useCallback((trackIndex: number) => {
-    resumeAudio();
+  const handleTapRec = useCallback(async (trackIndex: number) => {
+    await resumeAudio();
     if (tapRecTrack === trackIndex) {
       // Already recording this track — register a HIT at current step
       if (currentStep >= 0) {
@@ -318,13 +311,21 @@ export default function App() {
       setTracks(prev => prev.map((tr, i) =>
         i === trackIndex ? { ...tr, steps: tr.steps.map(() => false) } : tr
       ));
-      // Auto-start playback
+      // Auto-start playback if not already playing
       if (!isPlayingRef.current) {
         isPlayingRef.current = true;
         setIsPlaying(true);
         nextStepRef.current = 0;
         nextStepTimeRef.current = getAudioContext().currentTime;
         scheduler();
+      }
+      // Record first hit immediately at current step
+      if (currentStep >= 0) {
+        setTracks(prev => prev.map((tr, i) =>
+          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? true : s) } : tr
+        ));
+        playSoundById(tracksRef.current[trackIndex].soundId, undefined,
+          tracksRef.current[trackIndex].volume, tracksRef.current[trackIndex].decay);
       }
     }
   }, [tapRecTrack, currentStep, scheduler]);
@@ -612,7 +613,7 @@ export default function App() {
                 ...styles.bassNoteLabel,
                 background: isBlackKey(note) ? '#1a1a1a' : '#2a2a2a',
                 color: isBlackKey(note) ? ACCENT : '#ccc',
-                borderLeft: note % 12 === bassRoot ? `2px solid ${ACCENT}44` : 'none',
+                boxShadow: note % 12 === bassRoot ? `inset 2px 0 0 ${ACCENT}44` : 'none',
               }}>
                 {noteName(note)}
               </div>
@@ -876,7 +877,7 @@ const styles: Record<string, React.CSSProperties> = {
   stepButton: {
     flex: 1, aspectRatio: '1', border: '1px solid', borderRadius: 2,
     cursor: 'pointer', transition: 'background 0.05s, border-color 0.05s',
-    padding: 0, maxHeight: 22, minWidth: 0,
+    padding: 0, maxHeight: 28, minWidth: 0,
   },
   // Popup overlay
   overlay: {
@@ -968,7 +969,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Tap record button
   tapRecBtn: {
-    width: 30, height: 30, borderRadius: 15, fontSize: 16,
+    width: 34, height: 34, borderRadius: 17, fontSize: 18,
     background: '#1a1a1a', border: '1.5px solid #444', color: '#555',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: 0, flexShrink: 0, transition: 'all 0.15s', lineHeight: 1,
