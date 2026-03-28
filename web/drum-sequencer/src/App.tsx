@@ -4,7 +4,7 @@ import {
   SOUNDS_BY_CATEGORY, CATEGORY_LABELS,
   type SoundCategory, type SoundDef, SOUND_CATALOG,
 } from './audioEngine';
-import { PRESETS, PRESET_GROUPS, DEFAULT_TRACKS, type Track } from './patterns';
+import { PRESETS, PRESET_GROUPS, DEFAULT_TRACKS, VELOCITY_MULT, type Track, type StepVelocity } from './patterns';
 import {
   playBassNote, createBassSteps, midiToName, midiToFreq,
   DEFAULT_BASS_SETTINGS,
@@ -187,8 +187,9 @@ export default function App() {
       const time = nextStepTimeRef.current;
 
       for (const track of tracksRef.current) {
-        if (track.steps[step]) {
-          playSoundById(track.soundId, time, track.volume, track.decay);
+        const vel = track.steps[step];
+        if (vel > 0) {
+          playSoundById(track.soundId, time, track.volume * VELOCITY_MULT[vel], track.decay);
         }
       }
 
@@ -249,11 +250,26 @@ export default function App() {
 
   // ── Track editing ──────────────────────────────────────
 
+  // Click: toggle off(0)/on(2). Right-click: cycle velocity 0→1→2→3→0
   const toggleStep = useCallback((trackIndex: number, stepIndex: number) => {
     setTracks(prev =>
       prev.map((tr, i) =>
         i === trackIndex
-          ? { ...tr, steps: tr.steps.map((s, j) => (j === stepIndex ? !s : s)) }
+          ? { ...tr, steps: tr.steps.map((s, j) =>
+              j === stepIndex ? (s > 0 ? 0 : 2) as StepVelocity : s
+            ) }
+          : tr
+      )
+    );
+  }, []);
+
+  const cycleVelocity = useCallback((trackIndex: number, stepIndex: number) => {
+    setTracks(prev =>
+      prev.map((tr, i) =>
+        i === trackIndex
+          ? { ...tr, steps: tr.steps.map((s, j) =>
+              j === stepIndex ? ((s + 1) % 4) as StepVelocity : s
+            ) }
           : tr
       )
     );
@@ -333,7 +349,7 @@ export default function App() {
       // Already recording this track — register a HIT at current step
       if (currentStep >= 0) {
         setTracks(prev => prev.map((tr, i) =>
-          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? true : s) } : tr
+          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? 2 as StepVelocity : s) } : tr
         ));
         playSoundById(tracksRef.current[trackIndex].soundId, undefined,
           tracksRef.current[trackIndex].volume, tracksRef.current[trackIndex].decay);
@@ -343,7 +359,7 @@ export default function App() {
       setTapRecTrack(trackIndex);
       prevStepRef.current = -1;
       setTracks(prev => prev.map((tr, i) =>
-        i === trackIndex ? { ...tr, steps: tr.steps.map(() => false) } : tr
+        i === trackIndex ? { ...tr, steps: tr.steps.map(() => 0 as StepVelocity) } : tr
       ));
       // Auto-start playback if not already playing
       if (!isPlayingRef.current) {
@@ -356,7 +372,7 @@ export default function App() {
       // Record first hit immediately at current step
       if (currentStep >= 0) {
         setTracks(prev => prev.map((tr, i) =>
-          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? true : s) } : tr
+          i === trackIndex ? { ...tr, steps: tr.steps.map((s, j) => j === currentStep ? 2 as StepVelocity : s) } : tr
         ));
         playSoundById(tracksRef.current[trackIndex].soundId, undefined,
           tracksRef.current[trackIndex].volume, tracksRef.current[trackIndex].decay);
@@ -382,7 +398,6 @@ export default function App() {
 
   const toggleBassNote = useCallback((stepIdx: number, note: number) => {
     setBassSteps(prev => {
-      // Ensure array covers the step index
       const arr = prev.length > stepIdx ? [...prev] : [
         ...prev,
         ...Array.from({ length: stepIdx + 1 - prev.length }, () => ({ note: 0, accent: false, slide: false })),
@@ -390,6 +405,18 @@ export default function App() {
       arr[stepIdx] = { ...arr[stepIdx], note: arr[stepIdx].note === note ? 0 : note };
       return arr;
     });
+  }, []);
+
+  const toggleBassAccent = useCallback((stepIdx: number) => {
+    setBassSteps(prev => prev.map((bs, i) =>
+      i === stepIdx ? { ...bs, accent: !bs.accent } : bs
+    ));
+  }, []);
+
+  const toggleBassSlide = useCallback((stepIdx: number) => {
+    setBassSteps(prev => prev.map((bs, i) =>
+      i === stepIdx ? { ...bs, slide: !bs.slide } : bs
+    ));
   }, []);
 
   // ── Helpers ────────────────────────────────────────────
@@ -618,23 +645,30 @@ export default function App() {
                   </button>
                 </div>
                 <div style={styles.stepsRow}>
-                  {track.steps.map((active, stepIdx) => (
-                    <button
-                      key={stepIdx}
-                      onClick={() => toggleStep(trackIdx, stepIdx)}
-                      style={{
-                        ...styles.stepButton,
-                        ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
-                        background: active
-                          ? track.color
-                          : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
-                        borderColor: stepIdx === currentStep ? '#fff' : active ? track.color : '#3a3a3a',
-                        boxShadow: active
-                          ? `0 0 6px ${track.color}40`
-                          : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
-                      }}
-                    />
-                  ))}
+                  {track.steps.map((vel, stepIdx) => {
+                    const on = vel > 0;
+                    const opacity = vel === 1 ? 0.35 : vel === 3 ? 1 : 0.7;
+                    return (
+                      <button
+                        key={stepIdx}
+                        onClick={() => toggleStep(trackIdx, stepIdx)}
+                        onContextMenu={e => { e.preventDefault(); cycleVelocity(trackIdx, stepIdx); }}
+                        style={{
+                          ...styles.stepButton,
+                          ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
+                          background: on
+                            ? track.color
+                            : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
+                          opacity: on ? opacity : 1,
+                          borderColor: stepIdx === currentStep ? '#fff' : on ? track.color : '#3a3a3a',
+                          borderWidth: vel === 3 ? 2 : 1,
+                          boxShadow: on
+                            ? `0 0 ${vel === 3 ? 10 : vel === 1 ? 2 : 6}px ${track.color}${vel === 3 ? '60' : '40'}`
+                            : stepIdx === currentStep ? '0 0 4px rgba(255,255,255,0.3)' : 'none',
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -679,6 +713,52 @@ export default function App() {
               </div>
             </div>
           ))}
+          {/* Accent row */}
+          <div style={{ ...styles.trackRow, marginTop: 4 }}>
+            <div style={{ ...styles.bassNoteLabel, fontSize: 7, color: '#ff9500', background: 'transparent' }}>ACC</div>
+            <div style={styles.stepsRow}>
+              {Array.from({ length: stepCount }, (_, stepIdx) => {
+                const hasNote = bassSteps[stepIdx]?.note > 0;
+                const isAcc = bassSteps[stepIdx]?.accent;
+                return (
+                  <button key={stepIdx}
+                    onClick={() => toggleBassAccent(stepIdx)}
+                    style={{
+                      ...styles.stepButton,
+                      maxHeight: 14,
+                      ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
+                      background: isAcc ? '#ff9500' : hasNote ? '#3a3a3a' : '#252525',
+                      borderColor: isAcc ? '#ff9500' : '#2a2a2a',
+                      opacity: hasNote ? 1 : 0.3,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          {/* Slide row */}
+          <div style={styles.trackRow}>
+            <div style={{ ...styles.bassNoteLabel, fontSize: 7, color: '#5ac8fa', background: 'transparent' }}>SLD</div>
+            <div style={styles.stepsRow}>
+              {Array.from({ length: stepCount }, (_, stepIdx) => {
+                const hasNote = bassSteps[stepIdx]?.note > 0;
+                const isSld = bassSteps[stepIdx]?.slide;
+                return (
+                  <button key={stepIdx}
+                    onClick={() => toggleBassSlide(stepIdx)}
+                    style={{
+                      ...styles.stepButton,
+                      maxHeight: 14,
+                      ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
+                      background: isSld ? '#5ac8fa' : hasNote ? '#3a3a3a' : '#252525',
+                      borderColor: isSld ? '#5ac8fa' : '#2a2a2a',
+                      opacity: hasNote ? 1 : 0.3,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
