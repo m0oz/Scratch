@@ -125,6 +125,39 @@ export default function App() {
   const bassOctaveMin = 1;
   const bassOctaveMax = 4;
 
+  // Transpose bass notes when changing key
+  const changeBassRoot = useCallback((newRoot: number) => {
+    const oldRoot = bassRoot;
+    const semitoneShift = newRoot - oldRoot;
+    if (semitoneShift === 0) return;
+    setBassRoot(newRoot);
+    setBassSteps(prev => prev.map(bs => {
+      if (bs.note === 0) return bs;
+      return { ...bs, note: bs.note + semitoneShift };
+    }));
+  }, [bassRoot]);
+
+  // Transpose bass notes when changing scale
+  const changeBassScale = useCallback((newScaleIdx: number) => {
+    const oldScale = SCALES[bassScaleIdx];
+    const newScale = SCALES[newScaleIdx];
+    setBassScaleIdx(newScaleIdx);
+    setBassSteps(prev => prev.map(bs => {
+      if (bs.note === 0) return bs;
+      // Find closest note in new scale
+      const pc = ((bs.note - bassRoot) % 12 + 12) % 12;
+      const octShift = Math.floor((bs.note - bassRoot) / 12);
+      // Find nearest interval in new scale
+      let bestInterval = newScale.intervals[0];
+      let bestDist = 12;
+      for (const iv of newScale.intervals) {
+        const dist = Math.abs(iv - pc);
+        if (dist < bestDist) { bestDist = dist; bestInterval = iv; }
+      }
+      return { ...bs, note: bassRoot + octShift * 12 + bestInterval };
+    }));
+  }, [bassScaleIdx, bassRoot]);
+
   // Refs
   const tracksRef = useRef(tracks);
   tracksRef.current = tracks;
@@ -379,7 +412,7 @@ export default function App() {
 
   const popupTrack = trackPopup !== null ? tracks[trackPopup] : null;
 
-  const trackControlWidth = activeTab === 'drums' ? 120 : 44;
+  const trackControlWidth = activeTab === 'drums' ? 110 : 44;
 
   return (
     <div style={styles.container}>
@@ -491,13 +524,13 @@ export default function App() {
       {activeTab === 'bass' && (
         <div style={styles.controlRow}>
           <select style={styles.patternSelect} value={bassRoot}
-            onChange={e => setBassRoot(Number(e.target.value))}>
+            onChange={e => changeBassRoot(Number(e.target.value))}>
             {ROOT_NOTES.map(n => (
               <option key={n} value={n}>{ROOT_LABELS[n]}</option>
             ))}
           </select>
           <select style={styles.patternSelect} value={bassScaleIdx}
-            onChange={e => setBassScaleIdx(Number(e.target.value))}>
+            onChange={e => changeBassScale(Number(e.target.value))}>
             {SCALES.map((s, i) => (
               <option key={i} value={i}>{s.name}</option>
             ))}
@@ -544,7 +577,7 @@ export default function App() {
         {Array.from({ length: stepCount }, (_, i) => (
           <div key={i} style={{
             ...styles.stepLed,
-            ...(i % 16 === 0 && i > 0 ? { marginLeft: 6 } : {}),
+            ...(i > 0 ? (i % 16 === 0 ? { marginLeft: 6 } : i % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
             background: i === currentStep ? ACCENT : '#2a2a2a',
             boxShadow: i === currentStep ? `0 0 8px ${ACCENT}` : 'none',
           }} />
@@ -591,7 +624,7 @@ export default function App() {
                       onClick={() => toggleStep(trackIdx, stepIdx)}
                       style={{
                         ...styles.stepButton,
-                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                        ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
                         background: active
                           ? track.color
                           : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
@@ -616,9 +649,9 @@ export default function App() {
             <div key={note} style={styles.trackRow}>
               <div style={{
                 ...styles.bassNoteLabel,
-                background: isBlackKey(note) ? '#1a1a1a' : '#2a2a2a',
-                color: isBlackKey(note) ? ACCENT : '#ccc',
-                boxShadow: note % 12 === bassRoot ? `inset 2px 0 0 ${ACCENT}44` : 'none',
+                background: note % 12 === bassRoot ? '#1a2a28' : isBlackKey(note) ? '#1a1a1a' : '#252525',
+                color: note % 12 === bassRoot ? ACCENT : isBlackKey(note) ? '#888' : '#ccc',
+                fontWeight: note % 12 === bassRoot ? 900 : 700,
               }}>
                 {noteName(note)}
               </div>
@@ -631,7 +664,7 @@ export default function App() {
                       onClick={() => toggleBassNote(stepIdx, note)}
                       style={{
                         ...styles.stepButton,
-                        ...(stepIdx % 16 === 0 && stepIdx > 0 ? { marginLeft: 6 } : {}),
+                        ...(stepIdx > 0 ? (stepIdx % 16 === 0 ? { marginLeft: 6 } : stepIdx % 4 === 0 ? { marginLeft: 3 } : {}) : {}),
                         background: isActive
                           ? ACCENT
                           : stepIdx % 4 < 2 ? '#2a2a2a' : '#222',
@@ -779,9 +812,8 @@ const MONO = "'SF Mono', 'Fira Code', 'Cascadia Code', monospace";
 const styles: Record<string, React.CSSProperties> = {
   container: {
     fontFamily: FONT,
-    maxWidth: 1200,
     margin: '0 auto',
-    padding: '6px 8px',
+    padding: '4px 6px',
     color: '#e0e0e0',
     minHeight: '100vh',
     background: 'linear-gradient(180deg, #1a1a1a 0%, #111 100%)',
@@ -837,7 +869,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%', accentColor: ACCENT, cursor: 'pointer',
   },
   controlRow: {
-    display: 'flex', gap: 8, alignItems: 'center', padding: '4px 10px',
+    display: 'flex', gap: 8, alignItems: 'center', padding: '4px 8px',
     background: '#1c1c1c', borderLeft: '1px solid #333', borderRight: '1px solid #333',
     flexWrap: 'wrap' as const,
   },
@@ -855,7 +887,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0, fontFamily: FONT, transition: 'all 0.15s',
   },
   stepIndicators: {
-    display: 'flex', gap: 3, padding: '3px 10px',
+    display: 'flex', gap: 1, padding: '3px 8px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
     alignItems: 'center',
   },
@@ -864,12 +896,12 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'background 0.05s, box-shadow 0.05s',
   },
   grid: {
-    display: 'flex', flexDirection: 'column', gap: 1, padding: '4px 10px',
+    display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 8px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
   },
-  trackRow: { display: 'flex', gap: 4, alignItems: 'center' },
+  trackRow: { display: 'flex', gap: 4, alignItems: 'stretch' },
   trackControls: {
-    width: 120, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
+    width: 110, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3,
   },
   trackLabel: {
     fontSize: 9, fontWeight: 700, color: '#ccc', letterSpacing: 0.5,
@@ -878,11 +910,11 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap' as const, overflow: 'hidden',
     display: 'flex', alignItems: 'center', width: '100%',
   },
-  stepsRow: { display: 'flex', gap: 2, flex: 1 },
+  stepsRow: { display: 'flex', gap: 1, flex: 1 },
   stepButton: {
     flex: 1, aspectRatio: '1', border: '1px solid', borderRadius: 2,
     cursor: 'pointer', transition: 'background 0.05s, border-color 0.05s',
-    padding: 0, maxHeight: 28, minWidth: 0,
+    padding: 0, maxHeight: 32, minWidth: 0,
   },
   // Popup overlay
   overlay: {
@@ -964,7 +996,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Tab bar
   tabBar: {
-    display: 'flex', gap: 0, padding: '0 10px',
+    display: 'flex', gap: 0, padding: '0 8px',
     background: '#191919', borderLeft: '1px solid #333', borderRight: '1px solid #333',
   },
   tabBtn: {
