@@ -1,22 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ShipData, PlaneData, AppNotification } from './types';
+import { useEffect, useState } from 'react';
 import { useShipTracker } from './hooks/useShipTracker';
 import { usePlaneTracker } from './hooks/usePlaneTracker';
 import { ShipCard } from './components/ShipCard';
 import { PlaneCard } from './components/PlaneCard';
-import { NotificationToast } from './components/NotificationToast';
 import { SetupModal, AppSettings, loadSettings } from './components/SetupModal';
-import { compassLabel } from './utils/distance';
 import { DEFAULT_AIS_KEY, BELUGA_AIRCRAFT, SHIP_DETECTION_RADIUS_KM } from './config';
-
-const LS_NOTIF_HISTORY = 'elbspotter_history';
 
 function Pill({ active, label, icon }: { active: boolean; label: string; icon: string }) {
   return (
     <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-      active
-        ? 'bg-white/20 text-white'
-        : 'bg-white/10 text-white/50'
+      active ? 'bg-white/20 text-white' : 'bg-white/10 text-white/50'
     }`}>
       <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-300 animate-pulse' : 'bg-white/30'}`}/>
       <span>{icon} {label}</span>
@@ -57,77 +50,27 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings(DEFAULT_AIS_KEY));
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    try { return JSON.parse(localStorage.getItem(LS_NOTIF_HISTORY) ?? '[]'); } catch { return []; }
-  });
-  const [newIds, setNewIds] = useState<Set<string>>(new Set());
-  const notifPermission = useRef<NotificationPermission>('default');
-  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    if ('Notification' in window) {
-      Notification.requestPermission().then((p) => { notifPermission.current = p; });
-    }
+    if ('Notification' in window) Notification.requestPermission();
   }, []);
 
-  const addNotification = useCallback((notif: AppNotification) => {
-    setNotifications((prev) => {
-      const next = [notif, ...prev].slice(0, 50);
-      localStorage.setItem(LS_NOTIF_HISTORY, JSON.stringify(next));
-      return next;
-    });
-    setNewIds((prev) => new Set([...prev, notif.vesselId]));
-    setTimeout(() => {
-      setNewIds((prev) => { const n = new Set(prev); n.delete(notif.vesselId); return n; });
-    }, 30_000);
-    if (notifPermission.current === 'granted') {
-      new Notification(notif.title, { body: notif.message, tag: notif.vesselId, requireInteraction: false });
-    }
-  }, []);
-
-  const handleNewShip = useCallback(() => {}, []);
-
-  const handleNewPlane = useCallback((plane: PlaneData) => {
-    const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
-    const phase = plane.onGround ? 'on the ground' : (plane.baroAltitude ?? 999) < 600 ? 'low pass / approach' : 'flying overhead';
-    addNotification({
-      id: `plane-${plane.icao24}-${Date.now()}`,
-      type: 'plane',
-      title: `Beluga ${plane.belugaModel} spotted! 🐋`,
-      message: `${plane.registration} · ${phase} · ${plane.distance.toFixed(1)} km away${alt ? ` · ${alt}` : ''}`,
-      timestamp: Date.now(),
-      vesselId: plane.icao24,
-      dismissed: false,
-    });
-  }, [addNotification]);
-
-  const shipTrackerSettings = {
+  const shipOpts = {
     lat: settings.lat, lon: settings.lon,
     shipCloseKm: settings.notifyShipClose ? settings.shipCloseKm : 0,
     minShipLength: settings.minShipLength,
   };
-  const belugaTrackerSettings = {
+  const planeOpts = {
     lat: settings.lat, lon: settings.lon,
     belugaCloseKm: settings.notifyBelugaLanding ? settings.belugaCloseKm : 0,
   };
-  const { ships, mooredShips, connected: shipConnected, error: shipError } = useShipTracker(settings.apiKey, handleNewShip, shipTrackerSettings);
-  const { planes, loading: planeLoading, error: planeError, lastChecked, nextCheckIn } = usePlaneTracker(handleNewPlane, belugaTrackerSettings);
 
-  const dismissNotif = useCallback((id: string) => {
-    setNotifications((prev) => {
-      const next = prev.map((n) => (n.id === id ? { ...n, dismissed: true } : n));
-      localStorage.setItem(LS_NOTIF_HISTORY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const pendingCount = notifications.filter((n) => !n.dismissed).length;
+  const { ships, mooredShips, connected: shipConnected, error: shipError } = useShipTracker(settings.apiKey, shipOpts);
+  const { planes, loading: planeLoading, error: planeError, lastChecked, nextCheckIn } = usePlaneTracker(planeOpts);
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {/* <NotificationToast notifications={notifications} onDismiss={dismissNotif} /> */}
-
-      {/* Header — Airbus blue gradient */}
+      {/* Header */}
       <header className="sticky top-0 z-40 shadow-lg"
         style={{ background: 'linear-gradient(135deg, #003591 0%, #0090D0 100%)' }}>
         <div className="max-w-[1600px] mx-auto px-5 py-3">
@@ -135,24 +78,21 @@ export default function App() {
             {/* Logo */}
             <div className="flex items-center gap-2.5 mr-2">
               <svg viewBox="0 0 64 64" className="w-9 h-9 drop-shadow-sm select-none shrink-0">
-                {/* Lens */}
-                <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
-                <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
-                <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
-                <ellipse cx="16" cy="32" rx="2" ry="10.5" fill="#F5A700"/>
-                {/* First tube */}
-                <rect x="16" y="24" width="16" height="16" rx="2" fill="white" opacity="0.7"/>
-                <rect x="17" y="25.5" width="14" height="13" rx="1.5" fill="white" opacity="0.3"/>
-                <ellipse cx="32" cy="32" rx="2" ry="9" fill="#F5A700"/>
-                {/* Second tube */}
-                <rect x="32" y="25.5" width="14" height="13" rx="2" fill="white" opacity="0.55"/>
-                <rect x="33" y="27" width="12" height="10" rx="1.5" fill="white" opacity="0.2"/>
-                <ellipse cx="46" cy="32" rx="2" ry="8" fill="#F5A700"/>
-                {/* Eyepiece */}
-                <rect x="46" y="26" width="8" height="12" rx="2" fill="white" opacity="0.45"/>
-                <ellipse cx="54" cy="32" rx="1.5" ry="7" fill="#F5A700"/>
-                {/* Highlight */}
-                <line x1="18" y1="26" x2="44" y2="26" stroke="white" strokeWidth="1" opacity="0.4" strokeLinecap="round"/>
+                <g transform="rotate(45 32 32)">
+                  <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
+                  <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
+                  <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
+                  <ellipse cx="16" cy="32" rx="2" ry="10.5" fill="#F5A700"/>
+                  <rect x="16" y="24" width="16" height="16" rx="2" fill="white" opacity="0.7"/>
+                  <rect x="17" y="25.5" width="14" height="13" rx="1.5" fill="white" opacity="0.3"/>
+                  <ellipse cx="32" cy="32" rx="2" ry="9" fill="#F5A700"/>
+                  <rect x="32" y="25.5" width="14" height="13" rx="2" fill="white" opacity="0.55"/>
+                  <rect x="33" y="27" width="12" height="10" rx="1.5" fill="white" opacity="0.2"/>
+                  <ellipse cx="46" cy="32" rx="2" ry="8" fill="#F5A700"/>
+                  <rect x="46" y="26" width="8" height="12" rx="2" fill="white" opacity="0.45"/>
+                  <ellipse cx="54" cy="32" rx="1.5" ry="7" fill="#F5A700"/>
+                  <line x1="18" y1="26" x2="44" y2="26" stroke="white" strokeWidth="1" opacity="0.4" strokeLinecap="round"/>
+                </g>
               </svg>
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-white leading-none drop-shadow">
@@ -168,7 +108,7 @@ export default function App() {
             <div className="flex items-center gap-2 flex-wrap">
               <Pill
                 active={shipConnected}
-                label={shipConnected ? 'AIS live' : apiKey ? 'connecting…' : 'AIS offline'}
+                label={shipConnected ? 'AIS live' : settings.apiKey ? 'connecting…' : 'AIS offline'}
                 icon="🚢"
               />
               <Pill
@@ -188,47 +128,14 @@ export default function App() {
               {(shipError || planeError) && (
                 <span className="text-xs text-red-300 font-mono">{shipError || planeError}</span>
               )}
-              <button
-                onClick={() => setShowHistory((v) => !v)}
-                className="relative flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors font-semibold"
-              >
-                🕐 Log
-                {pendingCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-yellow-400 text-navy-900 text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
-                    {pendingCount > 9 ? '9+' : pendingCount}
-                  </span>
-                )}
-              </button>
               <SetupModal settings={settings} onSave={setSettings} />
             </div>
           </div>
         </div>
-
-        {/* Event log drawer */}
-        {showHistory && (
-          <div className="border-t border-white/10 bg-navy-900/95 backdrop-blur px-5 py-3 max-h-44 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <p className="text-white/30 text-xs text-center py-3">No events yet — waiting for vessels…</p>
-            ) : (
-              <div className="space-y-1">
-                {notifications.slice(0, 20).map((n) => (
-                  <div key={n.id} className="flex items-start gap-2 text-xs">
-                    <span className="shrink-0 text-white/30 font-mono w-11">
-                      {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="shrink-0">{n.type === 'ship' ? '🚢' : '🐋'}</span>
-                    <span className="text-white/60 leading-snug">{n.title} — {n.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </header>
 
       {/* Main */}
       <main className="max-w-[1600px] mx-auto px-4 py-7 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-
         {/* Ships column */}
         <section>
           <SectionHeader icon="🚢" title="Ships on the Elbe" count={ships.length} color="amber" />
@@ -237,17 +144,16 @@ export default function App() {
             <EmptyState
               icon="⚓"
               title={shipConnected ? 'Watching the Elbe…' : 'AIS connecting…'}
-              sub={`No large vessels passing within ${SHIP_DETECTION_RADIUS_KM} km right now. You'll get a notification the moment one appears!`}
+              sub={`No large vessels passing within ${SHIP_DETECTION_RADIUS_KM} km right now.`}
             />
           ) : (
             <div className="space-y-4">
               {ships.map((ship) => (
-                <ShipCard key={ship.mmsi} ship={ship} isNew={newIds.has(ship.mmsi)} />
+                <ShipCard key={ship.mmsi} ship={ship} />
               ))}
             </div>
           )}
 
-          {/* Moored ships in port */}
           {mooredShips.length > 0 && (
             <div className="mt-5">
               <SectionHeader icon="⚓" title="In Port" count={mooredShips.length} color="slate" />
@@ -273,7 +179,7 @@ export default function App() {
           ) : (
             <div className="space-y-4">
               {planes.map((plane) => (
-                <PlaneCard key={plane.icao24} plane={plane} isNew={newIds.has(plane.icao24)} />
+                <PlaneCard key={plane.icao24} plane={plane} />
               ))}
             </div>
           )}
