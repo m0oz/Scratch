@@ -1,3 +1,6 @@
+// Pre-configured AISStream key (public AIS data — free tier)
+export const DEFAULT_AIS_KEY = '1cfbd243411f5be686acec93819c447ed53513db';
+
 export const MY_LOCATION = {
   lat: 53.5453971,
   lon: 9.8344917,

@@ -13,36 +13,40 @@ export default {
         },
         airbus: {
           blue: '#003591',
-          sky: '#0090D0',
-          light: '#00BCD4',
+          sky:  '#0090D0',
+          pale: '#EEF5FF',
         },
         ship: {
-          amber: '#FFB400',
-          orange: '#FF8C00',
+          amber: '#F5A700',
+          dark:  '#C47F00',
+          pale:  '#FFF7E0',
         },
         beluga: {
-          teal: '#00BFA5',
-          green: '#00E5CC',
+          teal:  '#00A896',
+          dark:  '#007A6E',
+          pale:  '#E4FAF7',
         },
+        ink:   '#1A2B4A',
+        muted: '#6B84A3',
       },
       fontFamily: {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'spin-slow': 'spin 8s linear infinite',
-        'slide-in': 'slideIn 0.3s ease-out',
-        'fade-out': 'fadeOut 0.3s ease-in forwards',
+        'bounce-in':  'bounceIn 0.4s cubic-bezier(0.34,1.56,0.64,1)',
       },
       keyframes: {
-        slideIn: {
-          '0%': { transform: 'translateX(100%)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
+        bounceIn: {
+          '0%':   { opacity: '0', transform: 'scale(0.85) translateY(6px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
-        fadeOut: {
-          '0%': { opacity: '1' },
-          '100%': { opacity: '0', transform: 'translateX(100%)' },
-        },
+      },
+      boxShadow: {
+        card:        '0 2px 12px rgba(0,53,145,0.08)',
+        'card-hover':'0 6px 24px rgba(0,53,145,0.14)',
+        ship:        '0 4px 20px rgba(245,167,0,0.20)',
+        beluga:      '0 4px 20px rgba(0,168,150,0.20)',
       },
     },
   },
