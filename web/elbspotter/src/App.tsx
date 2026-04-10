@@ -165,7 +165,7 @@ export default function App() {
               />
               <Pill
                 active={!planeError}
-                label={planeLoading ? 'scanning…' : lastChecked ? `${Math.round((Date.now() - lastChecked.getTime()) / 60000)}m ago` : 'OpenSky'}
+                label={planeLoading ? 'scanning…' : lastChecked ? `${Math.round((Date.now() - lastChecked.getTime()) / 60000)}m ago` : 'ADS-B'}
                 icon="🐋"
               />
               {nextCheckIn > 0 && !planeLoading && (
@@ -297,7 +297,7 @@ export default function App() {
 
       <footer className="py-4 px-6 text-center">
         <p className="text-xs text-muted/50 font-mono">
-          Elbspotter · AISStream.io · OpenSky Network · Hamburg Finkenwerder 🌊
+          Elbspotter · AISStream.io · airplanes.live · Hamburg Finkenwerder 🌊
         </p>
       </footer>
     </div>

@@ -3,38 +3,31 @@ import { PlaneData } from '../types';
 import {
   MY_LOCATION,
   PLANE_DETECTION_RADIUS_KM,
-  OPENSKY_BBOX,
-  OPENSKY_POLL_INTERVAL_MS,
+  PLANE_POLL_INTERVAL_MS,
+  ADSB_RADIUS_NM,
   BELUGA_AIRCRAFT,
   VESSEL_TIMEOUT_MS,
 } from '../config';
 import { haversineKm } from '../utils/distance';
 
-const OPENSKY_BASE = 'https://opensky-network.org/api/states/all';
-// OpenSky blocks direct browser requests via CORS from non-opensky-network.org origins.
-// Route through corsproxy.io which fetches server-side and adds Access-Control-Allow-Origin: *.
-// Full target URL must be encodeURIComponent'd so its own & params aren't split by the browser.
-const CORS_PROXY = 'https://corsproxy.io/?';
+// airplanes.live: community ADS-B network, native CORS support, no API key needed.
+// Endpoint: /v2/point/LAT/LON/RADIUS_NM
+// Response units: altitude = feet, speed = knots, vertical rate = ft/min.
+// We convert to metres/m-per-s internally so PlaneCard display code stays unchanged.
+const ADSB_URL = `https://api.airplanes.live/v2/point/${MY_LOCATION.lat}/${MY_LOCATION.lon}/${ADSB_RADIUS_NM}`;
 
-type StateVector = [
-  string,           // 0  icao24
-  string | null,    // 1  callsign
-  string,           // 2  origin_country
-  number | null,    // 3  time_position
-  number,           // 4  last_contact
-  number | null,    // 5  longitude
-  number | null,    // 6  latitude
-  number | null,    // 7  baro_altitude
-  boolean,          // 8  on_ground
-  number | null,    // 9  velocity (m/s)
-  number | null,    // 10 true_track
-  number | null,    // 11 vertical_rate
-  unknown,          // 12 sensors
-  number | null,    // 13 geo_altitude
-  string | null,    // 14 squawk
-  boolean,          // 15 spi
-  number,           // 16 position_source
-];
+interface AdsbAircraft {
+  hex: string;               // ICAO24 lowercase
+  flight?: string;           // callsign, may have trailing spaces
+  r?: string;                // registration
+  lat?: number;
+  lon?: number;
+  alt_baro?: number | 'ground'; // feet, or literal "ground"
+  gs?: number;               // ground speed, knots
+  track?: number;            // true track, degrees
+  baro_rate?: number;        // vertical rate, ft/min
+  on_ground?: boolean;
+}
 
 export interface UsePlaneTrackerResult {
   planes: PlaneData[];
@@ -58,69 +51,64 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        lamin: String(OPENSKY_BBOX.lamin),
-        lomin: String(OPENSKY_BBOX.lomin),
-        lamax: String(OPENSKY_BBOX.lamax),
-        lomax: String(OPENSKY_BBOX.lomax),
-      });
-      const targetUrl = `${OPENSKY_BASE}?${params}`;
-      const res = await fetch(`${CORS_PROXY}${encodeURIComponent(targetUrl)}`);
+      const res = await fetch(ADSB_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { states?: StateVector[] };
+      const data = (await res.json()) as { ac?: AdsbAircraft[] };
 
       const now = Date.now();
       const found = new Map<string, PlaneData>();
 
-      for (const sv of data.states ?? []) {
-        const icao24 = (sv[0] ?? '').toLowerCase();
-        const belugaInfo = BELUGA_AIRCRAFT[icao24];
+      for (const ac of data.ac ?? []) {
+        const icao24 = (ac.hex ?? '').toLowerCase().replace(/^0+/, '') || ac.hex?.toLowerCase() || '';
+        // Try both with and without leading-zero padding
+        const belugaInfo = BELUGA_AIRCRAFT[icao24] ?? BELUGA_AIRCRAFT[ac.hex?.toLowerCase() ?? ''];
         if (!belugaInfo) continue;
 
-        const lat = sv[6];
-        const lon = sv[5];
+        const lat = ac.lat;
+        const lon = ac.lon;
         if (lat == null || lon == null) continue;
 
         const distance = haversineKm(MY_LOCATION.lat, MY_LOCATION.lon, lat, lon);
         if (distance > PLANE_DETECTION_RADIUS_KM) continue;
 
-        const isNew = !knownIds.current.has(icao24);
+        const onGround = ac.on_ground === true || ac.alt_baro === 'ground';
+        const altFt = typeof ac.alt_baro === 'number' ? ac.alt_baro : null;
+
+        const isNew = !knownIds.current.has(ac.hex?.toLowerCase() ?? icao24);
         const plane: PlaneData = {
-          icao24,
-          callsign: (sv[1] ?? '').trim() || belugaInfo.registration,
-          originCountry: sv[2],
+          icao24: ac.hex?.toLowerCase() ?? icao24,
+          callsign: (ac.flight ?? '').trim() || belugaInfo.registration,
+          originCountry: 'France',
           lat,
           lon,
-          baroAltitude: sv[7],
-          onGround: sv[8],
-          velocity: sv[9],
-          trueTrack: sv[10],
-          verticalRate: sv[11],
+          // Convert to the units PlaneData/PlaneCard expect (metres, m/s)
+          baroAltitude: altFt != null ? altFt * 0.3048 : null,
+          onGround,
+          velocity: ac.gs != null ? ac.gs / 1.944 : null,           // knots → m/s
+          trueTrack: ac.track ?? null,
+          verticalRate: ac.baro_rate != null ? ac.baro_rate / 196.85 : null, // ft/min → m/s
           distance,
           belugaModel: belugaInfo.model,
           registration: belugaInfo.registration,
           timestamp: now,
-          firstSeen: now, // will be overridden from prev in setPlanes below
+          firstSeen: now, // preserved from prev inside setPlanes below
           lastSeen: now,
         };
-        found.set(icao24, plane);
+        found.set(plane.icao24, plane);
 
         if (isNew) {
-          knownIds.current.add(icao24);
+          knownIds.current.add(plane.icao24);
           setTimeout(() => onNewPlaneRef.current(plane), 0);
         }
       }
 
-      // Remove planes that left the area
       setPlanes((prev) => {
         const cutoff = now - VESSEL_TIMEOUT_MS;
         const next = new Map(prev);
-        // merge new sightings, preserving firstSeen from prev
         for (const [id, p] of found) {
           const prevEntry = prev.get(id);
           next.set(id, { ...p, firstSeen: prevEntry?.firstSeen ?? p.firstSeen });
         }
-        // evict stale
         for (const [id, p] of next) {
           if (!found.has(id) && p.lastSeen < cutoff) {
             next.delete(id);
@@ -138,20 +126,19 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
     }
   };
 
-  // Countdown to next check
+  // Countdown to next poll
   useEffect(() => {
     const interval = setInterval(() => {
       if (!lastChecked) return;
       const elapsed = Date.now() - lastChecked.getTime();
-      const remaining = Math.max(0, Math.round((OPENSKY_POLL_INTERVAL_MS - elapsed) / 1000));
-      setNextCheckIn(remaining);
+      setNextCheckIn(Math.max(0, Math.round((PLANE_POLL_INTERVAL_MS - elapsed) / 1000)));
     }, 1000);
     return () => clearInterval(interval);
   }, [lastChecked]);
 
   useEffect(() => {
     poll();
-    const timer = setInterval(poll, OPENSKY_POLL_INTERVAL_MS);
+    const timer = setInterval(poll, PLANE_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

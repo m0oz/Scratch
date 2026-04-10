@@ -17,14 +17,6 @@ export const ELBE_BOUNDING_BOX = [
   [53.70, 10.2], // NE [lat, lon]
 ];
 
-// OpenSky bounding box
-export const OPENSKY_BBOX = {
-  lamin: 53.35,
-  lomin: 8.8,
-  lamax: 53.70,
-  lomax: 10.2,
-};
-
 // Ship types to track (AIS type codes)
 export const INTERESTING_SHIP_TYPES = new Set([
   // Passenger / cruise
@@ -55,8 +47,11 @@ export const BELUGA_AIRCRAFT: Record<string, { registration: string; model: 'XL'
   '3c4b2e': { registration: 'F-GSTE', model: 'ST', name: 'Beluga #5' },
 };
 
-// How often to poll OpenSky (ms) — anonymous limit is ~400 calls/day
-export const OPENSKY_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// How often to poll airplanes.live (ms)
+export const PLANE_POLL_INTERVAL_MS = 60 * 1000; // 1 minute — no documented rate limit
+
+// Query radius sent to airplanes.live (nautical miles). 10 nm ≈ 18.5 km > PLANE_DETECTION_RADIUS_KM.
+export const ADSB_RADIUS_NM = 10;
 
 // How long to keep a vessel in view after last signal (ms)
 export const VESSEL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
