@@ -1,104 +1,217 @@
 import { useState } from 'react';
 
-interface Props {
-  onSave: (apiKey: string) => void;
-  initialKey?: string;
+export interface AppSettings {
+  apiKey: string;
+  lat: number;
+  lon: number;
+  locationLabel: string;
+  minShipLength: number;
+  shipCloseKm: number;
+  belugaCloseKm: number;
+  notifyShipClose: boolean;
+  notifyBelugaLanding: boolean;
 }
 
-export function SetupModal({ onSave, initialKey = '' }: Props) {
-  const [key, setKey] = useState(initialKey);
-  const [show, setShow] = useState(!initialKey);
+const LS_SETTINGS = 'elbspotter_settings';
+
+const DEFAULTS: AppSettings = {
+  apiKey: '',
+  lat: 53.5453971,
+  lon: 9.8344917,
+  locationLabel: 'Finkenwerder, Hamburg',
+  minShipLength: 150,
+  shipCloseKm: 0.5,
+  belugaCloseKm: 2.0,
+  notifyShipClose: true,
+  notifyBelugaLanding: true,
+};
+
+export function loadSettings(defaultApiKey: string): AppSettings {
+  try {
+    const stored = JSON.parse(localStorage.getItem(LS_SETTINGS) ?? '{}');
+    return {
+      ...DEFAULTS,
+      apiKey: defaultApiKey,
+      ...stored,
+    };
+  } catch {
+    return { ...DEFAULTS, apiKey: defaultApiKey };
+  }
+}
+
+function saveSettings(settings: AppSettings) {
+  localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+}
+
+interface Props {
+  settings: AppSettings;
+  onSave: (settings: AppSettings) => void;
+}
+
+export function SetupModal({ settings, onSave }: Props) {
+  const [draft, setDraft] = useState<AppSettings>(settings);
+  const [show, setShow] = useState(false);
+
+  const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
+    setDraft((prev) => ({ ...prev, [key]: value }));
+
+  const handleSave = () => {
+    saveSettings(draft);
+    onSave(draft);
+    setShow(false);
+  };
 
   if (!show) {
     return (
       <button
-        onClick={() => setShow(true)}
+        onClick={() => { setDraft(settings); setShow(true); }}
         className="text-xs text-white/60 hover:text-white transition-colors font-semibold flex items-center gap-1"
-        title="Configure AISStream API key"
       >
-        ⚙ Setup
+        ⚙ Settings
       </button>
     );
   }
 
   return (
-    /* Scrollable overlay so nothing is cut off on small screens */
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 overflow-y-auto flex items-start justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl my-auto">
-        {/* Coloured header strip */}
         <div className="h-2 rounded-t-3xl bg-gradient-to-r from-airbus-blue to-airbus-sky"/>
 
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-airbus-pale flex items-center justify-center text-2xl">⚙</div>
+        <div className="p-5 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-airbus-pale flex items-center justify-center text-xl">⚙</div>
             <div>
-              <h2 className="text-ink font-extrabold text-lg leading-none">Setup Elbspotter</h2>
-              <p className="text-muted text-sm mt-0.5">Connect to live AIS ship data</p>
+              <h2 className="text-ink font-extrabold text-base leading-none">Settings</h2>
+              <p className="text-muted text-xs mt-0.5">Configure tracking and notifications</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {/* API key input */}
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">
-                AISStream API Key
-                <span className="ml-1 text-ship-amber normal-case font-semibold tracking-normal">(required for ships)</span>
-              </label>
+          {/* Location */}
+          <Section title="Your Location">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted mb-1">Latitude</label>
+                <input
+                  type="number" step="0.0001"
+                  value={draft.lat}
+                  onChange={(e) => update('lat', parseFloat(e.target.value) || 0)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-muted mb-1">Longitude</label>
+                <input
+                  type="number" step="0.0001"
+                  value={draft.lon}
+                  onChange={(e) => update('lon', parseFloat(e.target.value) || 0)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="block text-[11px] font-semibold text-muted mb-1">Label</label>
               <input
                 type="text"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="Paste your API key here…"
-                className="w-full bg-airbus-pale border border-blue-100 rounded-xl px-3 py-2.5 text-ink text-sm font-mono placeholder-muted/40 focus:outline-none focus:border-airbus-sky focus:ring-2 focus:ring-airbus-sky/20 transition"
+                value={draft.locationLabel}
+                onChange={(e) => update('locationLabel', e.target.value)}
+                placeholder="e.g. Finkenwerder, Hamburg"
+                className={inputClass}
               />
-              <p className="mt-2 text-xs text-muted leading-relaxed">
-                Free key at{' '}
-                <a href="https://aisstream.io" target="_blank" rel="noopener noreferrer"
-                  className="text-airbus-sky hover:underline font-semibold">
-                  aisstream.io
-                </a>
-                . Plane tracking (airplanes.live) needs no key.
-              </p>
             </div>
+          </Section>
 
-            {/* Info box */}
-            <div className="bg-airbus-pale rounded-2xl p-4 border border-blue-100 space-y-2 text-sm text-ink/80">
-              <p className="font-bold text-ink text-xs uppercase tracking-widest mb-2">What Elbspotter tracks</p>
-              <p>🚢 Container & cruise ships within 30 km on the Elbe</p>
-              <p>🐋 All 11 Airbus Beluga aircraft (XL & ST) within 15 km</p>
-              <p>🔔 Desktop notifications when a vessel is spotted</p>
-              <p>📍 Your location: Finkenwerder, Hamburg (53.545°N 9.834°E)</p>
+          {/* Ship filter */}
+          <Section title="Ship Filter">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-muted">Minimum length</label>
+              <input
+                type="number" step="10" min="0" max="500"
+                value={draft.minShipLength}
+                onChange={(e) => update('minShipLength', parseInt(e.target.value) || 0)}
+                className="w-20 bg-airbus-pale border border-blue-100 rounded-lg px-2 py-1 text-sm font-mono text-ink focus:outline-none focus:border-airbus-sky transition"
+              />
+              <span className="text-xs text-muted">m</span>
             </div>
+            <p className="mt-1 text-[11px] text-muted">Only show ships longer than this. 150 m filters out ferries and tugs.</p>
+          </Section>
 
-            {/* Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => { onSave(key.trim()); setShow(false); }}
-                className="flex-1 bg-airbus-blue hover:bg-airbus-sky text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm shadow-sm"
-              >
-                {key.trim() ? 'Save & Connect' : 'Continue (planes only)'}
-              </button>
-              {initialKey && (
-                <button
-                  onClick={() => setShow(false)}
-                  className="px-4 py-2.5 border border-blue-200 text-muted hover:text-ink rounded-xl transition-colors text-sm"
-                >
-                  Cancel
-                </button>
-              )}
+          {/* Notifications */}
+          <Section title="Notifications">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox" checked={draft.notifyShipClose}
+                  onChange={(e) => update('notifyShipClose', e.target.checked)}
+                  className="mt-1 accent-airbus-blue"
+                />
+                <div className="flex-1">
+                  <div className="text-xs font-bold text-ink">Ship nearby</div>
+                  <div className="text-[11px] text-muted">Alert when a large ship is within:</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number" step="0.1" min="0.1" max="10"
+                      value={draft.shipCloseKm}
+                      onChange={(e) => update('shipCloseKm', parseFloat(e.target.value) || 0.5)}
+                      className="w-20 bg-airbus-pale border border-blue-100 rounded-lg px-2 py-1 text-sm font-mono text-ink focus:outline-none focus:border-airbus-sky transition"
+                      disabled={!draft.notifyShipClose}
+                    />
+                    <span className="text-xs text-muted">km</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox" checked={draft.notifyBelugaLanding}
+                  onChange={(e) => update('notifyBelugaLanding', e.target.checked)}
+                  className="mt-1 accent-airbus-blue"
+                />
+                <div className="flex-1">
+                  <div className="text-xs font-bold text-ink">Beluga landing</div>
+                  <div className="text-[11px] text-muted">Alert when a Beluga is landing within:</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number" step="0.5" min="0.5" max="20"
+                      value={draft.belugaCloseKm}
+                      onChange={(e) => update('belugaCloseKm', parseFloat(e.target.value) || 2.0)}
+                      className="w-20 bg-airbus-pale border border-blue-100 rounded-lg px-2 py-1 text-sm font-mono text-ink focus:outline-none focus:border-airbus-sky transition"
+                      disabled={!draft.notifyBelugaLanding}
+                    />
+                    <span className="text-xs text-muted">km</span>
+                  </div>
+                </div>
+              </div>
             </div>
+          </Section>
 
-            {!key.trim() && !initialKey && (
-              <button
-                onClick={() => { onSave(''); setShow(false); }}
-                className="w-full text-xs text-muted/60 hover:text-muted transition-colors py-1"
-              >
-                Skip for now (plane tracking only)
-              </button>
-            )}
+          {/* Buttons */}
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              className="flex-1 bg-airbus-blue hover:bg-airbus-sky text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm shadow-sm"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setShow(false)}
+              className="px-4 py-2.5 border border-blue-200 text-muted hover:text-ink rounded-xl transition-colors text-sm"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold text-muted uppercase tracking-widest mb-2">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+const inputClass = 'w-full bg-airbus-pale border border-blue-100 rounded-lg px-3 py-2 text-ink text-sm font-mono placeholder-muted/40 focus:outline-none focus:border-airbus-sky focus:ring-2 focus:ring-airbus-sky/20 transition';

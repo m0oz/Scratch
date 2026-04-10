@@ -52,6 +52,7 @@ export interface UseShipTrackerResult {
 export function useShipTracker(
   apiKey: string,
   onNewShip: (ship: ShipData) => void,
+  opts: { lat: number; lon: number; shipCloseKm: number; minShipLength: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, shipCloseKm: SHIP_CLOSE_RADIUS_KM, minShipLength: MIN_SHIP_LENGTH_M },
 ): UseShipTrackerResult {
   const [ships, setShips] = useState<Map<string, ShipData>>(new Map());
   const [connected, setConnected] = useState(false);
@@ -148,7 +149,7 @@ export function useShipTracker(
         etaText: formatETA(s.Eta as { Day?: number; Month?: number; Hour?: number; Minute?: number } | undefined) ?? undefined,
       });
       const cached = staticCache.current.get(mmsi)!;
-      const isLargeEnough = length != null && length >= MIN_SHIP_LENGTH_M;
+      const isLargeEnough = length != null && length >= opts.minShipLength;
 
       setShips((prevShips) => {
         const existingShip = prevShips.get(mmsi);
@@ -218,7 +219,7 @@ export function useShipTracker(
 
     if (!lat || !lon) return;
 
-    const distance = haversineKm(MY_LOCATION.lat, MY_LOCATION.lon, lat, lon);
+    const distance = haversineKm(opts.lat, opts.lon, lat, lon);
     if (distance > SHIP_DETECTION_RADIUS_KM) return;
 
     // Always cache position — so when ShipStaticData confirms length, we can promote
@@ -232,7 +233,7 @@ export function useShipTracker(
     const cached = staticCache.current.get(mmsi) ?? {};
     const resolvedType = cached.shipType ?? shipType ?? 0;
     // Only show ships with confirmed length >= 150m
-    if (!cached.length || cached.length < MIN_SHIP_LENGTH_M) return;
+    if (!cached.length || cached.length < opts.minShipLength) return;
 
     const isMoored = (speed ?? 0) < MIN_SHIP_SPEED_KNOTS;
     const { emoji, country } = mmsiToFlag(mmsi);
@@ -273,8 +274,8 @@ export function useShipTracker(
         setTimeout(() => onNewShipRef.current(updated), 0);
       }
 
-      // Close-range notification (500m) — fires once per ship
-      if (distance <= SHIP_CLOSE_RADIUS_KM && !closeNotified.current.has(mmsi)) {
+      // Close-range notification — fires once per ship
+      if (opts.shipCloseKm > 0 && distance <= opts.shipCloseKm && !closeNotified.current.has(mmsi)) {
         closeNotified.current.add(mmsi);
         const name = updated.name;
         const len = updated.length ? `${updated.length} m` : '';

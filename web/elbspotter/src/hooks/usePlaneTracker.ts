@@ -3,21 +3,24 @@ import { PlaneData } from '../types';
 import {
   MY_LOCATION,
   PLANE_DETECTION_RADIUS_KM,
-  PLANE_POLL_INTERVAL_MS,
   ADSB_RADIUS_NM,
   BELUGA_AIRCRAFT,
   VESSEL_TIMEOUT_MS,
   LOW_ALTITUDE_THRESHOLD_M,
 } from '../config';
-import { haversineKm } from '../utils/distance';
 
-const BELUGA_CLOSE_KM = 2.0;
+const POLL_SLOW_MS = 5 * 60 * 1000;  // 5 min — no Beluga nearby
+const POLL_FAST_MS = 60 * 1000;       // 1 min — Beluga within 10 km
+const NEARBY_THRESHOLD_KM = 10;
+import { haversineKm } from '../utils/distance';
 
 // airplanes.live: community ADS-B network, native CORS support, no API key needed.
 // Endpoint: /v2/point/LAT/LON/RADIUS_NM
 // Response units: altitude = feet, speed = knots, vertical rate = ft/min.
 // We convert to metres/m-per-s internally so PlaneCard display code stays unchanged.
-const ADSB_URL = `https://api.airplanes.live/v2/point/${MY_LOCATION.lat}/${MY_LOCATION.lon}/${ADSB_RADIUS_NM}`;
+function adsbUrl(lat: number, lon: number) {
+  return `https://api.airplanes.live/v2/point/${lat}/${lon}/${ADSB_RADIUS_NM}`;
+}
 
 interface AdsbAircraft {
   hex: string;               // ICAO24 lowercase
@@ -40,7 +43,10 @@ export interface UsePlaneTrackerResult {
   nextCheckIn: number; // seconds
 }
 
-export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlaneTrackerResult {
+export function usePlaneTracker(
+  onNewPlane: (plane: PlaneData) => void,
+  opts: { lat: number; lon: number; belugaCloseKm: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, belugaCloseKm: 2.0 },
+): UsePlaneTrackerResult {
   const [planes, setPlanes] = useState<Map<string, PlaneData>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +56,14 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
   onNewPlaneRef.current = onNewPlane;
   const knownIds = useRef<Set<string>>(new Set());
   const landingNotified = useRef<Set<string>>(new Set());
+  const belugaNearby = useRef(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const poll = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(ADSB_URL);
+      const res = await fetch(adsbUrl(opts.lat, opts.lon));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { ac?: AdsbAircraft[] };
 
@@ -71,7 +79,7 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
         const lon = ac.lon;
         if (lat == null || lon == null) continue;
 
-        const distance = haversineKm(MY_LOCATION.lat, MY_LOCATION.lon, lat, lon);
+        const distance = haversineKm(opts.lat, opts.lon, lat, lon);
         if (distance > PLANE_DETECTION_RADIUS_KM) continue;
 
         const onGround = ac.on_ground === true || ac.alt_baro === 'ground';
@@ -104,8 +112,8 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
           setTimeout(() => onNewPlaneRef.current(plane), 0);
         }
 
-        // Beluga landing notification — within 2km, low altitude or on ground
-        const isLanding = distance <= BELUGA_CLOSE_KM && (
+        // Beluga landing notification
+        const isLanding = opts.belugaCloseKm > 0 && distance <= opts.belugaCloseKm && (
           onGround ||
           (plane.baroAltitude != null && plane.baroAltitude < LOW_ALTITUDE_THRESHOLD_M) ||
           (plane.verticalRate != null && plane.verticalRate < -1)
@@ -138,6 +146,10 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
         return next;
       });
 
+      // Check if any Beluga is within 10 km — switch to fast polling
+      const anyNearby = [...found.values()].some((p) => p.distance <= NEARBY_THRESHOLD_KM);
+      belugaNearby.current = anyNearby;
+
       setLastChecked(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fetch error');
@@ -146,20 +158,31 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
     }
   };
 
+  // Schedule next poll with dynamic interval
+  const scheduleNext = useCallback(() => {
+    clearTimeout(pollTimer.current);
+    const interval = belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
+    pollTimer.current = setTimeout(async () => {
+      await poll();
+      scheduleNext();
+    }, interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Countdown to next poll
   useEffect(() => {
     const interval = setInterval(() => {
       if (!lastChecked) return;
       const elapsed = Date.now() - lastChecked.getTime();
-      setNextCheckIn(Math.max(0, Math.round((PLANE_POLL_INTERVAL_MS - elapsed) / 1000)));
+      const pollMs = belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
+      setNextCheckIn(Math.max(0, Math.round((pollMs - elapsed) / 1000)));
     }, 1000);
     return () => clearInterval(interval);
   }, [lastChecked]);
 
   useEffect(() => {
-    poll();
-    const timer = setInterval(poll, PLANE_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+    poll().then(scheduleNext);
+    return () => clearTimeout(pollTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
