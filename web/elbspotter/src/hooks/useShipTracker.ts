@@ -10,8 +10,9 @@ import {
   VESSEL_TIMEOUT_MS,
   MOORED_VESSEL_TIMEOUT_MS,
 } from '../config';
-import { haversineKm, mmsiToFlag } from '../utils/distance';
+import { haversineKm, mmsiToFlag, estimateShipEtaMinutes } from '../utils/distance';
 import { formatETA } from '../data/ports';
+import { ELBE_INBOUND_RANGE } from '../config';
 
 const AISSTREAM_WS = 'wss://stream.aisstream.io/v0/stream';
 
@@ -39,6 +40,13 @@ function shipTypeName(code: number): string {
   if (code >= 80 && code <= 89) return 'Tanker';
   if (code >= 90 && code <= 99) return 'Other';
   return 'Vessel';
+}
+
+function shipDirection(course: number, speed: number): 'inbound' | 'outbound' | null {
+  if (speed < 1.0) return null; // not moving enough to determine
+  const [lo, hi] = ELBE_INBOUND_RANGE;
+  const inbound = course >= lo && course <= hi;
+  return inbound ? 'inbound' : 'outbound';
 }
 
 export interface UseShipTrackerResult {
@@ -197,6 +205,8 @@ export function useShipTracker(
           firstSeen: now,
           lastSeen: now,
           moored: isMoored,
+          direction: shipDirection(pos.course, pos.speed),
+          passEtaMinutes: estimateShipEtaMinutes(pos.distance, pos.speed),
         };
         const next = new Map(prevShips);
         next.set(mmsi, ship);
@@ -266,6 +276,8 @@ export function useShipTracker(
         firstSeen: existing?.firstSeen ?? now,
         lastSeen: now,
         moored: isMoored,
+        direction: shipDirection(course ?? 0, speed ?? 0),
+        passEtaMinutes: estimateShipEtaMinutes(distance, speed ?? 0),
       };
       next.set(mmsi, updated);
 

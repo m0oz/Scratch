@@ -98,8 +98,22 @@ export function ShipCard({ ship, isNew }: Props) {
               <Stat label="Status" value="Moored"/>
             ) : (
               <>
+                {ship.direction && (
+                  <span className={`font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full text-[10px] ${
+                    ship.direction === 'inbound'
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-orange-50 text-orange-600'
+                  }`}>
+                    {ship.direction === 'inbound' ? '↗ Inbound' : '↙ Outbound'}
+                  </span>
+                )}
                 <Stat label="Speed" value={`${ship.speed.toFixed(1)} kn`}/>
-                <Stat label="Course" value={`${Math.round(ship.course)}° ${compass}`}/>
+                {ship.passEtaMinutes != null && ship.passEtaMinutes < 120 && (
+                  <Stat label="ETA" value={ship.passEtaMinutes < 60
+                    ? `~${Math.round(ship.passEtaMinutes)} min`
+                    : `~${(ship.passEtaMinutes / 60).toFixed(1)} h`
+                  }/>
+                )}
               </>
             )}
             {ship.width && <Stat label="Beam" value={`${ship.width} m`}/>}

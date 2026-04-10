@@ -25,6 +25,31 @@ export function compassLabel(degrees: number): string {
   return dirs[Math.round(degrees / 22.5) % 16];
 }
 
+/** Is the track heading roughly toward the target? */
+export function isHeadingToward(
+  lat: number, lon: number, track: number,
+  targetLat: number, targetLon: number, toleranceDeg: number,
+): boolean {
+  const bearing = bearingDeg(lat, lon, targetLat, targetLon);
+  let diff = Math.abs(bearing - track);
+  if (diff > 180) diff = 360 - diff;
+  return diff <= toleranceDeg;
+}
+
+/** Estimate minutes to arrival given distance (km) and speed (m/s). */
+export function estimateEtaMinutes(distanceKm: number, speedMs: number | null): number | null {
+  if (!speedMs || speedMs <= 0) return null;
+  const speedKmPerMin = (speedMs / 1000) * 60;
+  return distanceKm / speedKmPerMin;
+}
+
+/** Estimate minutes for a ship to pass at given distance/speed (knots). */
+export function estimateShipEtaMinutes(distanceKm: number, speedKnots: number): number | null {
+  if (speedKnots < 0.5) return null;
+  const speedKmPerMin = (speedKnots * 1.852) / 60;
+  return distanceKm / speedKmPerMin;
+}
+
 export function mmsiToFlag(mmsi: string): { emoji: string; country: string } {
   const prefix = parseInt(mmsi.substring(0, 3));
   const map: [number, number, string, string][] = [
