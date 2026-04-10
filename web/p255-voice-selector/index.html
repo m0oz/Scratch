@@ -505,6 +505,7 @@ function selectVoice(btn, voice) {
   btn.classList.add('sel');
   selected = voice;
   updateSend();
+  sendVoice();
 }
 
 // ── MIDI ──────────────────────────────────────────────────────────────
@@ -567,7 +568,7 @@ function updateSend() {
   const ok = !!getOutput() && !!selected;
   btn.disabled = !ok;
   if (flashTimer) return; // don't override flash label
-  btn.textContent = selected ? `Send — ${selected.name}` : 'Select a voice to send';
+  btn.textContent = selected ? `Resend — ${selected.name}` : 'No voice selected';
 }
 
 function sendVoice() {
