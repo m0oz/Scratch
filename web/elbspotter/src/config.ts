@@ -17,14 +17,6 @@ export const ELBE_BOUNDING_BOX = [
   [53.70, 10.2], // NE [lat, lon]
 ];
 
-// OpenSky bounding box
-export const OPENSKY_BBOX = {
-  lamin: 53.35,
-  lomin: 8.8,
-  lamax: 53.70,
-  lomax: 10.2,
-};
-
 // Ship types to track (AIS type codes)
 export const INTERESTING_SHIP_TYPES = new Set([
   // Passenger / cruise
@@ -39,24 +31,28 @@ export const INTERESTING_SHIP_TYPES = new Set([
 export const MIN_SHIP_SPEED_KNOTS = 1.5;
 
 // Known Airbus Beluga ICAO24 hex codes (lowercase)
+// Hex codes are in the French ICAO range (38xxxx–3Bxxxx) since all Belugas are F-G registered.
 export const BELUGA_AIRCRAFT: Record<string, { registration: string; model: 'XL' | 'ST'; name: string }> = {
-  // BelugaXL (A330-743L)
-  '3c76fd': { registration: 'F-GXLH', model: 'XL', name: 'BelugaXL #1' },
-  '3c76ff': { registration: 'F-GXLJ', model: 'XL', name: 'BelugaXL #2' },
-  '3c7700': { registration: 'F-GXLK', model: 'XL', name: 'BelugaXL #3' },
-  '3c7701': { registration: 'F-GXLL', model: 'XL', name: 'BelugaXL #4' },
-  '3c7702': { registration: 'F-GXLM', model: 'XL', name: 'BelugaXL #5' },
-  '3c7703': { registration: 'F-GXLN', model: 'XL', name: 'BelugaXL #6' },
-  // Beluga ST (A300-600ST)
-  '3c4b26': { registration: 'F-GSTA', model: 'ST', name: 'Beluga #1' },
-  '3c4b28': { registration: 'F-GSTB', model: 'ST', name: 'Beluga #2' },
-  '3c4b2a': { registration: 'F-GSTC', model: 'ST', name: 'Beluga #3' },
-  '3c4b2c': { registration: 'F-GSTD', model: 'ST', name: 'Beluga #4' },
-  '3c4b2e': { registration: 'F-GSTE', model: 'ST', name: 'Beluga #5' },
+  // BelugaXL (A330-743L) — 6 active
+  '395d66': { registration: 'F-GXLG', model: 'XL', name: 'BelugaXL #1' },
+  '395d67': { registration: 'F-GXLH', model: 'XL', name: 'BelugaXL #2' },
+  '395d68': { registration: 'F-GXLI', model: 'XL', name: 'BelugaXL #3' },
+  '395d69': { registration: 'F-GXLJ', model: 'XL', name: 'BelugaXL #4' },
+  '395d6d': { registration: 'F-GXLN', model: 'XL', name: 'BelugaXL #5' },
+  '395d6e': { registration: 'F-GXLO', model: 'XL', name: 'BelugaXL #6' },
+  // Beluga ST (A300-600ST) — all retired, but may still appear in ADS-B data
+  '394a60': { registration: 'F-GSTA', model: 'ST', name: 'Beluga ST #1' },
+  '394a61': { registration: 'F-GSTB', model: 'ST', name: 'Beluga ST #2' },
+  '394a62': { registration: 'F-GSTC', model: 'ST', name: 'Beluga ST #3' },
+  '394a63': { registration: 'F-GSTD', model: 'ST', name: 'Beluga ST #4' },
+  '394a65': { registration: 'F-GSTF', model: 'ST', name: 'Beluga ST #5' },
 };
 
-// How often to poll OpenSky (ms) — anonymous limit is ~400 calls/day
-export const OPENSKY_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// How often to poll airplanes.live (ms)
+export const PLANE_POLL_INTERVAL_MS = 60 * 1000; // 1 minute — no documented rate limit
+
+// Query radius sent to airplanes.live (nautical miles). 10 nm ≈ 18.5 km > PLANE_DETECTION_RADIUS_KM.
+export const ADSB_RADIUS_NM = 10;
 
 // How long to keep a vessel in view after last signal (ms)
 export const VESSEL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
