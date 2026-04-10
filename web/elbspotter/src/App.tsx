@@ -5,22 +5,11 @@ import { usePlaneTracker } from './hooks/usePlaneTracker';
 import { ShipCard } from './components/ShipCard';
 import { PlaneCard } from './components/PlaneCard';
 import { NotificationToast } from './components/NotificationToast';
-import { SetupModal } from './components/SetupModal';
+import { SetupModal, AppSettings, loadSettings } from './components/SetupModal';
 import { compassLabel } from './utils/distance';
 import { DEFAULT_AIS_KEY, BELUGA_AIRCRAFT, SHIP_DETECTION_RADIUS_KM } from './config';
 
-const LS_API_KEY = 'elbspotter_aiskey';
 const LS_NOTIF_HISTORY = 'elbspotter_history';
-
-function useAISKey() {
-  const [key, setKey] = useState(() => localStorage.getItem(LS_API_KEY) ?? DEFAULT_AIS_KEY);
-  const save = useCallback((k: string) => {
-    setKey(k);
-    if (k) localStorage.setItem(LS_API_KEY, k);
-    else localStorage.removeItem(LS_API_KEY);
-  }, []);
-  return [key, save] as const;
-}
 
 function Pill({ active, label, icon }: { active: boolean; label: string; icon: string }) {
   return (
@@ -67,7 +56,7 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
 }
 
 export default function App() {
-  const [apiKey, saveKey] = useAISKey();
+  const [settings, setSettings] = useState<AppSettings>(() => loadSettings(DEFAULT_AIS_KEY));
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     try { return JSON.parse(localStorage.getItem(LS_NOTIF_HISTORY) ?? '[]'); } catch { return []; }
   });
@@ -96,10 +85,7 @@ export default function App() {
     }
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleNewShip = useCallback((_ship: ShipData) => {
-    // Close-range ship notifications are handled inside useShipTracker
-  }, []);
+  const handleNewShip = useCallback(() => {}, []);
 
   const handleNewPlane = useCallback((plane: PlaneData) => {
     const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
@@ -115,8 +101,16 @@ export default function App() {
     });
   }, [addNotification]);
 
-  const { ships, mooredShips, connected: shipConnected, error: shipError } = useShipTracker(apiKey, handleNewShip);
-  const { planes, loading: planeLoading, error: planeError, lastChecked, nextCheckIn } = usePlaneTracker(handleNewPlane);
+  const shipTrackerSettings = {
+    lat: settings.lat, lon: settings.lon,
+    shipCloseKm: settings.notifyShipClose ? settings.shipCloseKm : 0,
+  };
+  const belugaTrackerSettings = {
+    lat: settings.lat, lon: settings.lon,
+    belugaCloseKm: settings.notifyBelugaLanding ? settings.belugaCloseKm : 0,
+  };
+  const { ships, mooredShips, connected: shipConnected, error: shipError } = useShipTracker(settings.apiKey, handleNewShip, shipTrackerSettings);
+  const { planes, loading: planeLoading, error: planeError, lastChecked, nextCheckIn } = usePlaneTracker(handleNewPlane, belugaTrackerSettings);
 
   const dismissNotif = useCallback((id: string) => {
     setNotifications((prev) => {
@@ -164,7 +158,7 @@ export default function App() {
                   Elb<span className="text-yellow-300">spotter</span>
                 </h1>
                 <p className="text-[10px] text-white/60 leading-none mt-0.5 font-mono">
-                  53.545°N 9.834°E · Finkenwerder
+                  {settings.lat.toFixed(3)}°N {settings.lon.toFixed(3)}°E · {settings.locationLabel}
                 </p>
               </div>
             </div>
@@ -204,7 +198,7 @@ export default function App() {
                   </span>
                 )}
               </button>
-              <SetupModal onSave={saveKey} initialKey={apiKey} />
+              <SetupModal settings={settings} onSave={setSettings} />
             </div>
           </div>
         </div>
