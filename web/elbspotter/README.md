@@ -1,4 +1,4 @@
-# Elbe Watch — Ship & Beluga Tracker
+# Elbspotter — Ship & Beluga Tracker
 
 Desktop-friendly tracker for large ships passing on the Elbe river and Airbus Beluga aircraft near Hamburg Finkenwerder (53.545°N 9.834°E).
 

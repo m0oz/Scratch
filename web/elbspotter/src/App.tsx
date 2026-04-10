@@ -8,8 +8,8 @@ import { NotificationToast } from './components/NotificationToast';
 import { SetupModal } from './components/SetupModal';
 import { compassLabel } from './utils/distance';
 
-const LS_API_KEY = 'elbewatch_aiskey';
-const LS_NOTIF_HISTORY = 'elbewatch_history';
+const LS_API_KEY = 'elbspotter_aiskey';
+const LS_NOTIF_HISTORY = 'elbspotter_history';
 
 function useAISKey() {
   const [key, setKey] = useState(() => localStorage.getItem(LS_API_KEY) ?? '');
@@ -135,8 +135,8 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg font-extrabold tracking-tight leading-none">
-                <span className="text-airbus-sky">Elbe</span>
-                <span className="text-white"> Watch</span>
+                <span className="text-airbus-sky">Elb</span>
+                <span className="text-white">spotter</span>
               </h1>
               <p className="text-xs text-white/40 leading-none mt-0.5 font-mono">53.545°N 9.834°E · Finkenwerder</p>
             </div>
@@ -327,7 +327,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-navy-700 mt-8 py-4 px-6 text-center">
         <p className="text-xs text-white/20 font-mono">
-          Ship data: AISStream.io · Plane data: OpenSky Network · Built for Hamburg Finkenwerder 🌊
+          Elbspotter · Ship data: AISStream.io · Plane data: OpenSky Network · Hamburg Finkenwerder 🌊
         </p>
       </footer>
     </div>

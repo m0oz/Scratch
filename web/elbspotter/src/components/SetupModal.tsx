@@ -27,7 +27,7 @@ export function SetupModal({ onSave, initialKey = '' }: Props) {
         <div className="flex items-center gap-3 mb-4">
           <span className="text-3xl">⚙</span>
           <div>
-            <h2 className="text-white font-bold text-lg">Setup Elbe Watch</h2>
+            <h2 className="text-white font-bold text-lg">Setup Elbspotter</h2>
             <p className="text-white/50 text-sm">Connect to live AIS ship data</p>
           </div>
         </div>
