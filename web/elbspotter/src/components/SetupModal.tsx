@@ -5,6 +5,7 @@ export interface AppSettings {
   lat: number;
   lon: number;
   locationLabel: string;
+  minShipLength: number;
   shipCloseKm: number;
   belugaCloseKm: number;
   notifyShipClose: boolean;
@@ -18,6 +19,7 @@ const DEFAULTS: AppSettings = {
   lat: 53.5453971,
   lon: 9.8344917,
   locationLabel: 'Finkenwerder, Hamburg',
+  minShipLength: 150,
   shipCloseKm: 0.5,
   belugaCloseKm: 2.0,
   notifyShipClose: true,
@@ -48,7 +50,7 @@ interface Props {
 
 export function SetupModal({ settings, onSave }: Props) {
   const [draft, setDraft] = useState<AppSettings>(settings);
-  const [show, setShow] = useState(!settings.apiKey);
+  const [show, setShow] = useState(false);
 
   const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -84,24 +86,6 @@ export function SetupModal({ settings, onSave }: Props) {
             </div>
           </div>
 
-          {/* AIS Key */}
-          <Section title="AIS Connection">
-            <label className="block text-xs font-semibold text-muted mb-1">API Key</label>
-            <input
-              type="password"
-              value={draft.apiKey}
-              onChange={(e) => update('apiKey', e.target.value)}
-              placeholder="Paste your AISStream key…"
-              className="w-full bg-airbus-pale border border-blue-100 rounded-lg px-3 py-2 text-ink text-sm font-mono placeholder-muted/40 focus:outline-none focus:border-airbus-sky focus:ring-2 focus:ring-airbus-sky/20 transition"
-            />
-            <p className="mt-1 text-[11px] text-muted">
-              Free at{' '}
-              <a href="https://aisstream.io" target="_blank" rel="noopener noreferrer"
-                className="text-airbus-sky hover:underline font-semibold">aisstream.io</a>
-              . Beluga tracking needs no key.
-            </p>
-          </Section>
-
           {/* Location */}
           <Section title="Your Location">
             <div className="grid grid-cols-2 gap-2">
@@ -134,6 +118,21 @@ export function SetupModal({ settings, onSave }: Props) {
                 className={inputClass}
               />
             </div>
+          </Section>
+
+          {/* Ship filter */}
+          <Section title="Ship Filter">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-muted">Minimum length</label>
+              <input
+                type="number" step="10" min="0" max="500"
+                value={draft.minShipLength}
+                onChange={(e) => update('minShipLength', parseInt(e.target.value) || 0)}
+                className="w-20 bg-airbus-pale border border-blue-100 rounded-lg px-2 py-1 text-sm font-mono text-ink focus:outline-none focus:border-airbus-sky transition"
+              />
+              <span className="text-xs text-muted">m</span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted">Only show ships longer than this. 150 m filters out ferries and tugs.</p>
           </Section>
 
           {/* Notifications */}

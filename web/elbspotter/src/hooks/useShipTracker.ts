@@ -52,7 +52,7 @@ export interface UseShipTrackerResult {
 export function useShipTracker(
   apiKey: string,
   onNewShip: (ship: ShipData) => void,
-  opts: { lat: number; lon: number; shipCloseKm: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, shipCloseKm: SHIP_CLOSE_RADIUS_KM },
+  opts: { lat: number; lon: number; shipCloseKm: number; minShipLength: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, shipCloseKm: SHIP_CLOSE_RADIUS_KM, minShipLength: MIN_SHIP_LENGTH_M },
 ): UseShipTrackerResult {
   const [ships, setShips] = useState<Map<string, ShipData>>(new Map());
   const [connected, setConnected] = useState(false);
@@ -149,7 +149,7 @@ export function useShipTracker(
         etaText: formatETA(s.Eta as { Day?: number; Month?: number; Hour?: number; Minute?: number } | undefined) ?? undefined,
       });
       const cached = staticCache.current.get(mmsi)!;
-      const isLargeEnough = length != null && length >= MIN_SHIP_LENGTH_M;
+      const isLargeEnough = length != null && length >= opts.minShipLength;
 
       setShips((prevShips) => {
         const existingShip = prevShips.get(mmsi);
@@ -233,7 +233,7 @@ export function useShipTracker(
     const cached = staticCache.current.get(mmsi) ?? {};
     const resolvedType = cached.shipType ?? shipType ?? 0;
     // Only show ships with confirmed length >= 150m
-    if (!cached.length || cached.length < MIN_SHIP_LENGTH_M) return;
+    if (!cached.length || cached.length < opts.minShipLength) return;
 
     const isMoored = (speed ?? 0) < MIN_SHIP_SPEED_KNOTS;
     const { emoji, country } = mmsiToFlag(mmsi);
