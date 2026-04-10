@@ -3,12 +3,15 @@ import { PlaneData } from '../types';
 import {
   MY_LOCATION,
   PLANE_DETECTION_RADIUS_KM,
-  PLANE_POLL_INTERVAL_MS,
   ADSB_RADIUS_NM,
   BELUGA_AIRCRAFT,
   VESSEL_TIMEOUT_MS,
   LOW_ALTITUDE_THRESHOLD_M,
 } from '../config';
+
+const POLL_SLOW_MS = 5 * 60 * 1000;  // 5 min — no Beluga nearby
+const POLL_FAST_MS = 60 * 1000;       // 1 min — Beluga within 10 km
+const NEARBY_THRESHOLD_KM = 10;
 import { haversineKm } from '../utils/distance';
 
 // airplanes.live: community ADS-B network, native CORS support, no API key needed.
@@ -53,6 +56,8 @@ export function usePlaneTracker(
   onNewPlaneRef.current = onNewPlane;
   const knownIds = useRef<Set<string>>(new Set());
   const landingNotified = useRef<Set<string>>(new Set());
+  const belugaNearby = useRef(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const poll = async () => {
     setLoading(true);
@@ -141,6 +146,10 @@ export function usePlaneTracker(
         return next;
       });
 
+      // Check if any Beluga is within 10 km — switch to fast polling
+      const anyNearby = [...found.values()].some((p) => p.distance <= NEARBY_THRESHOLD_KM);
+      belugaNearby.current = anyNearby;
+
       setLastChecked(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fetch error');
@@ -149,20 +158,31 @@ export function usePlaneTracker(
     }
   };
 
+  // Schedule next poll with dynamic interval
+  const scheduleNext = useCallback(() => {
+    clearTimeout(pollTimer.current);
+    const interval = belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
+    pollTimer.current = setTimeout(async () => {
+      await poll();
+      scheduleNext();
+    }, interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Countdown to next poll
   useEffect(() => {
     const interval = setInterval(() => {
       if (!lastChecked) return;
       const elapsed = Date.now() - lastChecked.getTime();
-      setNextCheckIn(Math.max(0, Math.round((PLANE_POLL_INTERVAL_MS - elapsed) / 1000)));
+      const pollMs = belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
+      setNextCheckIn(Math.max(0, Math.round((pollMs - elapsed) / 1000)));
     }, 1000);
     return () => clearInterval(interval);
   }, [lastChecked]);
 
   useEffect(() => {
-    poll();
-    const timer = setInterval(poll, PLANE_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+    poll().then(scheduleNext);
+    return () => clearTimeout(pollTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
