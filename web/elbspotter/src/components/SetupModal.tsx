@@ -64,7 +64,7 @@ export function SetupModal({ onSave, initialKey = '' }: Props) {
             {/* Info box */}
             <div className="bg-airbus-pale rounded-2xl p-4 border border-blue-100 space-y-2 text-sm text-ink/80">
               <p className="font-bold text-ink text-xs uppercase tracking-widest mb-2">What Elbspotter tracks</p>
-              <p>🚢 Container & cruise ships within 4 km on the Elbe</p>
+              <p>🚢 Container & cruise ships within 30 km on the Elbe</p>
               <p>🐋 All 11 Airbus Beluga aircraft (XL & ST) within 15 km</p>
               <p>🔔 Desktop notifications when a vessel is spotted</p>
               <p>📍 Your location: Finkenwerder, Hamburg (53.545°N 9.834°E)</p>
