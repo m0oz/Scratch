@@ -7,7 +7,7 @@ import { PlaneCard } from './components/PlaneCard';
 import { NotificationToast } from './components/NotificationToast';
 import { SetupModal } from './components/SetupModal';
 import { compassLabel } from './utils/distance';
-import { DEFAULT_AIS_KEY } from './config';
+import { DEFAULT_AIS_KEY, BELUGA_AIRCRAFT } from './config';
 
 const LS_API_KEY = 'elbspotter_aiskey';
 const LS_NOTIF_HISTORY = 'elbspotter_history';
@@ -260,22 +260,25 @@ export default function App() {
 
           {/* Fleet grid */}
           <div className="mt-6 bg-white rounded-2xl shadow-card p-4 border border-blue-100">
-            <div className="text-xs font-bold text-muted uppercase tracking-widest mb-3">
-              Airbus Beluga Fleet
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-bold text-muted uppercase tracking-widest">
+                Airbus Beluga Fleet
+              </div>
+              <a
+                href={`https://globe.airplanes.live/?icaoFilter=${Object.keys(BELUGA_AIRCRAFT).join(',')}&enableLabels&extendedLabels=2`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-semibold text-airbus-sky hover:text-airbus-blue transition-colors flex items-center gap-1"
+              >
+                🗺 Live map
+              </a>
             </div>
             <div className="grid grid-cols-2 gap-1.5 text-xs font-mono">
-              {[
-                { reg: 'F-GXLH', model: 'XL' }, { reg: 'F-GXLJ', model: 'XL' },
-                { reg: 'F-GXLK', model: 'XL' }, { reg: 'F-GXLL', model: 'XL' },
-                { reg: 'F-GXLM', model: 'XL' }, { reg: 'F-GXLN', model: 'XL' },
-                { reg: 'F-GSTA', model: 'ST' }, { reg: 'F-GSTB', model: 'ST' },
-                { reg: 'F-GSTC', model: 'ST' }, { reg: 'F-GSTD', model: 'ST' },
-                { reg: 'F-GSTE', model: 'ST' },
-              ].map((b) => {
-                const spotted = planes.find((p) => p.registration === b.reg);
+              {Object.entries(BELUGA_AIRCRAFT).map(([hex, b]) => {
+                const spotted = planes.find((p) => p.registration === b.registration);
                 return (
                   <div
-                    key={b.reg}
+                    key={hex}
                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all ${
                       spotted
                         ? 'border-beluga-teal bg-beluga-pale text-beluga-dark font-bold shadow-beluga/30 shadow-sm'
@@ -285,7 +288,7 @@ export default function App() {
                     <span className={spotted ? 'text-beluga-teal' : 'text-gray-300'}>
                       {spotted ? '●' : '○'}
                     </span>
-                    <span>{b.reg}</span>
+                    <span>{b.registration}</span>
                     <span className="ml-auto text-[10px] opacity-60">{b.model}</span>
                   </div>
                 );
