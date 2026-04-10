@@ -21,6 +21,7 @@ export interface ShipData {
   distance: number; // km from user
   firstSeen: number;
   lastSeen: number;
+  moored: boolean;
 }
 
 export interface PlaneData {

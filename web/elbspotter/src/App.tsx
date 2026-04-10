@@ -36,7 +36,7 @@ function Pill({ active, label, icon }: { active: boolean; label: string; icon: s
 }
 
 function SectionHeader({ icon, title, count, color }: {
-  icon: string; title: string; count: number; color: 'amber' | 'teal';
+  icon: string; title: string; count: number; color: 'amber' | 'teal' | 'slate';
 }) {
   return (
     <div className="flex items-center gap-3 mb-5">
@@ -44,7 +44,7 @@ function SectionHeader({ icon, title, count, color }: {
       <h2 className="text-lg font-extrabold text-ink">{title}</h2>
       {count > 0 && (
         <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full text-white ${
-          color === 'amber' ? 'bg-ship-amber' : 'bg-beluga-teal'
+          color === 'amber' ? 'bg-ship-amber' : color === 'teal' ? 'bg-beluga-teal' : 'bg-slate-400'
         }`}>
           {count}
         </span>
@@ -121,7 +121,7 @@ export default function App() {
     });
   }, [addNotification]);
 
-  const { ships, connected: shipConnected, error: shipError } = useShipTracker(apiKey, handleNewShip);
+  const { ships, mooredShips, connected: shipConnected, error: shipError } = useShipTracker(apiKey, handleNewShip);
   const { planes, loading: planeLoading, error: planeError, lastChecked, nextCheckIn } = usePlaneTracker(handleNewPlane);
 
   const dismissNotif = useCallback((id: string) => {
@@ -229,13 +229,25 @@ export default function App() {
             <EmptyState
               icon="⚓"
               title={shipConnected ? 'Watching the Elbe…' : 'AIS connecting…'}
-              sub="No large vessels within 4 km right now. You'll get a notification the moment one appears!"
+              sub="No large vessels passing within 4 km right now. You'll get a notification the moment one appears!"
             />
           ) : (
             <div className="space-y-4">
               {ships.map((ship) => (
                 <ShipCard key={ship.mmsi} ship={ship} isNew={newIds.has(ship.mmsi)} />
               ))}
+            </div>
+          )}
+
+          {/* Moored ships in port */}
+          {mooredShips.length > 0 && (
+            <div className="mt-8">
+              <SectionHeader icon="⚓" title="In Port" count={mooredShips.length} color="slate" />
+              <div className="space-y-3">
+                {mooredShips.map((ship) => (
+                  <ShipCard key={ship.mmsi} ship={ship} />
+                ))}
+              </div>
             </div>
           )}
         </section>
@@ -248,7 +260,7 @@ export default function App() {
             <EmptyState
               icon="🐋"
               title="No Belugas nearby"
-              sub={`All 11 Airbus Belugas are accounted for — none within 15 km right now. Scans every 5 min.${nextCheckIn > 0 ? ` Next in ${nextCheckIn}s.` : ''}`}
+              sub={`All 11 Airbus Belugas are accounted for — none within 15 km right now. Scans every minute.${nextCheckIn > 0 ? ` Next in ${nextCheckIn}s.` : ''}`}
             />
           ) : (
             <div className="space-y-4">

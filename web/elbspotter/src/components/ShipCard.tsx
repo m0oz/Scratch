@@ -22,17 +22,23 @@ export function ShipCard({ ship, isNew }: Props) {
   const mt = `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}`;
   const isCruise = ship.shipType >= 60 && ship.shipType <= 69;
   const isUltraLarge = ship.length && ship.length >= 300;
+  const moored = ship.moored;
 
   return (
     <div className={`bg-white rounded-2xl overflow-hidden transition-all duration-300 border ${
-      isNew
-        ? 'border-ship-amber shadow-ship ring-2 ring-ship-amber/30 animate-bounce-in'
-        : 'border-blue-100 shadow-card hover:shadow-card-hover'
+      moored
+        ? 'border-slate-200 shadow-sm opacity-90'
+        : isNew
+          ? 'border-ship-amber shadow-ship ring-2 ring-ship-amber/30 animate-bounce-in'
+          : 'border-blue-100 shadow-card hover:shadow-card-hover'
     }`}>
       {/* Coloured top stripe */}
-      <div className={`h-1.5 ${isNew
-        ? 'bg-gradient-to-r from-ship-amber via-yellow-300 to-ship-amber bg-[length:200%] animate-pulse'
-        : 'bg-gradient-to-r from-ship-amber to-ship-dark'
+      <div className={`h-1.5 ${
+        moored
+          ? 'bg-gradient-to-r from-slate-300 to-slate-400'
+          : isNew
+            ? 'bg-gradient-to-r from-ship-amber via-yellow-300 to-ship-amber bg-[length:200%] animate-pulse'
+            : 'bg-gradient-to-r from-ship-amber to-ship-dark'
       }`}/>
 
       <div className="p-4">
@@ -40,7 +46,12 @@ export function ShipCard({ ship, isNew }: Props) {
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              {isNew && (
+              {moored && (
+                <span className="text-[10px] font-bold bg-slate-400 text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  At berth
+                </span>
+              )}
+              {isNew && !moored && (
                 <span className="text-[10px] font-bold bg-ship-amber text-white px-2 py-0.5 rounded-full uppercase tracking-wide animate-pulse-slow">
                   Now passing!
                 </span>
@@ -81,8 +92,14 @@ export function ShipCard({ ship, isNew }: Props) {
             <ShipSilhouette type={ship.shipType} className="w-full h-auto drop-shadow"/>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1">
-            <Stat label="Speed"  value={`${ship.speed.toFixed(1)} kn`}/>
-            <Stat label="Course" value={`${Math.round(ship.course)}° ${compass}`}/>
+            {moored ? (
+              <Stat label="Status" value="Moored"/>
+            ) : (
+              <>
+                <Stat label="Speed"  value={`${ship.speed.toFixed(1)} kn`}/>
+                <Stat label="Course" value={`${Math.round(ship.course)}° ${compass}`}/>
+              </>
+            )}
             {ship.length && <Stat label="Length" value={`${ship.length} m`}/>}
             {ship.width  && <Stat label="Beam"   value={`${ship.width} m`}/>}
             {ship.imoNumber ? <Stat label="IMO"  value={String(ship.imoNumber)}/> : null}

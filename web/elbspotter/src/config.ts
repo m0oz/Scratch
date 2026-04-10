@@ -56,6 +56,7 @@ export const ADSB_RADIUS_NM = 10;
 
 // How long to keep a vessel in view after last signal (ms)
 export const VESSEL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const MOORED_VESSEL_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes (moored ships report less often)
 
 // Low altitude threshold for takeoff/landing (meters)
 export const LOW_ALTITUDE_THRESHOLD_M = 600;

@@ -59,9 +59,8 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
       const found = new Map<string, PlaneData>();
 
       for (const ac of data.ac ?? []) {
-        const icao24 = (ac.hex ?? '').toLowerCase().replace(/^0+/, '') || ac.hex?.toLowerCase() || '';
-        // Try both with and without leading-zero padding
-        const belugaInfo = BELUGA_AIRCRAFT[icao24] ?? BELUGA_AIRCRAFT[ac.hex?.toLowerCase() ?? ''];
+        const icao24 = (ac.hex ?? '').toLowerCase();
+        const belugaInfo = BELUGA_AIRCRAFT[icao24];
         if (!belugaInfo) continue;
 
         const lat = ac.lat;

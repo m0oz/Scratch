@@ -7,6 +7,7 @@ import {
   MIN_SHIP_SPEED_KNOTS,
   ELBE_BOUNDING_BOX,
   VESSEL_TIMEOUT_MS,
+  MOORED_VESSEL_TIMEOUT_MS,
 } from '../config';
 import { haversineKm, mmsiToFlag } from '../utils/distance';
 import { formatETA } from '../data/ports';
@@ -27,6 +28,7 @@ const SHIP_TYPE_NAMES: Record<number, string> = {
 
 export interface UseShipTrackerResult {
   ships: ShipData[];
+  mooredShips: ShipData[];
   connected: boolean;
   error: string | null;
   reconnect: () => void;
@@ -141,8 +143,8 @@ export function useShipTracker(
     const cached = staticCache.current.get(mmsi) ?? {};
     const resolvedType = cached.shipType ?? shipType ?? 0;
     if (resolvedType !== 0 && !INTERESTING_SHIP_TYPES.has(resolvedType)) return;
-    if ((speed ?? 0) < MIN_SHIP_SPEED_KNOTS) return;
 
+    const isMoored = (speed ?? 0) < MIN_SHIP_SPEED_KNOTS;
     const { emoji, country } = mmsiToFlag(mmsi);
     const now = Date.now();
 
@@ -172,24 +174,28 @@ export function useShipTracker(
         timestamp: now,
         firstSeen: existing?.firstSeen ?? now,
         lastSeen: now,
+        moored: isMoored,
       };
       next.set(mmsi, updated);
 
-      if (!existing) {
-        // New ship in range
+      if (!existing && !isMoored) {
+        // New moving ship in range — notify
         setTimeout(() => onNewShipRef.current(updated), 0);
       }
       return next;
     });
   };
 
-  // Cleanup stale ships
+  // Cleanup stale ships (moored ships get a longer grace period)
   useEffect(() => {
     const timer = setInterval(() => {
-      const cutoff = Date.now() - VESSEL_TIMEOUT_MS;
+      const now = Date.now();
+      const movingCutoff = now - VESSEL_TIMEOUT_MS;
+      const mooredCutoff = now - MOORED_VESSEL_TIMEOUT_MS;
       setShips((prev) => {
         const next = new Map(prev);
         for (const [mmsi, ship] of prev) {
+          const cutoff = ship.moored ? mooredCutoff : movingCutoff;
           if (ship.lastSeen < cutoff) next.delete(mmsi);
         }
         return next.size === prev.size ? prev : next;
@@ -209,8 +215,10 @@ export function useShipTracker(
     };
   }, [apiKey, connect]);
 
+  const allShips = Array.from(ships.values());
   return {
-    ships: Array.from(ships.values()).sort((a, b) => a.distance - b.distance),
+    ships: allShips.filter((s) => !s.moored).sort((a, b) => a.distance - b.distance),
+    mooredShips: allShips.filter((s) => s.moored).sort((a, b) => a.distance - b.distance),
     connected,
     error,
     reconnect: connect,

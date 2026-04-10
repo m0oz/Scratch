@@ -57,7 +57,7 @@ export function SetupModal({ onSave, initialKey = '' }: Props) {
                   className="text-airbus-sky hover:underline font-semibold">
                   aisstream.io
                 </a>
-                . Plane tracking (OpenSky) needs no key.
+                . Plane tracking (airplanes.live) needs no key.
               </p>
             </div>
 
