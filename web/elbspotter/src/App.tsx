@@ -7,7 +7,7 @@ import { PlaneCard } from './components/PlaneCard';
 import { NotificationToast } from './components/NotificationToast';
 import { SetupModal } from './components/SetupModal';
 import { compassLabel } from './utils/distance';
-import { DEFAULT_AIS_KEY, BELUGA_AIRCRAFT } from './config';
+import { DEFAULT_AIS_KEY, BELUGA_AIRCRAFT, SHIP_DETECTION_RADIUS_KM } from './config';
 
 const LS_API_KEY = 'elbspotter_aiskey';
 const LS_NOTIF_HISTORY = 'elbspotter_history';
@@ -229,7 +229,7 @@ export default function App() {
             <EmptyState
               icon="⚓"
               title={shipConnected ? 'Watching the Elbe…' : 'AIS connecting…'}
-              sub="No large vessels passing within 4 km right now. You'll get a notification the moment one appears!"
+              sub={`No large vessels passing within ${SHIP_DETECTION_RADIUS_KM} km right now. You'll get a notification the moment one appears!`}
             />
           ) : (
             <div className="space-y-4">

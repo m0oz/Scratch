@@ -8,7 +8,7 @@ export const MY_LOCATION = {
 };
 
 // Detection radii
-export const SHIP_DETECTION_RADIUS_KM = 4.0;
+export const SHIP_DETECTION_RADIUS_KM = 30.0;
 export const PLANE_DETECTION_RADIUS_KM = 15.0;
 
 // AIS bounding box around the Elbe between Hamburg and the sea
