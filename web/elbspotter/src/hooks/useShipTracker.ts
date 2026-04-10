@@ -3,7 +3,7 @@ import { ShipData } from '../types';
 import {
   MY_LOCATION,
   SHIP_DETECTION_RADIUS_KM,
-  INTERESTING_SHIP_TYPES,
+  MIN_SHIP_LENGTH_M,
   MIN_SHIP_SPEED_KNOTS,
   ELBE_BOUNDING_BOX,
   VESSEL_TIMEOUT_MS,
@@ -14,17 +14,31 @@ import { formatETA } from '../data/ports';
 
 const AISSTREAM_WS = 'wss://stream.aisstream.io/v0/stream';
 
-const SHIP_TYPE_NAMES: Record<number, string> = {
-  60: 'Passenger Ship', 61: 'Passenger Ship', 62: 'Passenger Ship',
-  63: 'Passenger Ship', 64: 'Passenger Ship', 65: 'Cruise Ship',
-  66: 'Passenger Ship', 67: 'Passenger Ship', 68: 'Passenger Ship', 69: 'Passenger Ship',
-  70: 'Cargo Ship', 71: 'Cargo Ship', 72: 'Cargo Ship',
-  73: 'Cargo Ship', 74: 'Cargo Ship', 75: 'Container Ship',
-  76: 'Container Ship', 77: 'Container Ship', 78: 'Container Ship', 79: 'Container Ship',
-  80: 'Tanker', 81: 'Tanker', 82: 'Tanker',
-  83: 'Tanker', 84: 'Tanker', 85: 'Tanker',
-  86: 'Tanker', 87: 'Tanker', 88: 'Tanker', 89: 'Tanker',
-};
+function shipTypeName(code: number): string {
+  if (code >= 20 && code <= 29) return 'Wing-in-Ground';
+  if (code === 30) return 'Fishing Vessel';
+  if (code === 31 || code === 32) return 'Towing Vessel';
+  if (code === 33) return 'Dredger';
+  if (code === 34) return 'Dive Vessel';
+  if (code === 35) return 'Military';
+  if (code === 36) return 'Sailing Vessel';
+  if (code === 37) return 'Pleasure Craft';
+  if (code >= 40 && code <= 49) return 'High-Speed Craft';
+  if (code === 50) return 'Pilot Vessel';
+  if (code === 51) return 'SAR Vessel';
+  if (code === 52) return 'Tug';
+  if (code === 53) return 'Port Tender';
+  if (code === 55) return 'Law Enforcement';
+  if (code === 58) return 'Medical Transport';
+  if (code === 59) return 'Special Craft';
+  if (code === 65) return 'Cruise Ship';
+  if (code >= 60 && code <= 69) return 'Passenger Ship';
+  if (code >= 75 && code <= 79) return 'Container Ship';
+  if (code >= 70 && code <= 74) return 'Cargo Ship';
+  if (code >= 80 && code <= 89) return 'Tanker';
+  if (code >= 90 && code <= 99) return 'Other';
+  return 'Vessel';
+}
 
 export interface UseShipTrackerResult {
   ships: ShipData[];
@@ -68,9 +82,11 @@ export function useShipTracker(
       );
     };
 
-    ws.onmessage = (event: MessageEvent) => {
+    ws.onmessage = async (event: MessageEvent) => {
       try {
-        const msg = JSON.parse(event.data as string);
+        const raw = event.data;
+        const text = typeof raw === 'string' ? raw : await (raw as Blob).text();
+        const msg = JSON.parse(text);
         handleMessage(msg);
       } catch {
         // ignore parse errors
@@ -106,7 +122,7 @@ export function useShipTracker(
       staticCache.current.set(mmsi, {
         ...existing,
         shipType: (s.Type as number) ?? 0,
-        typeName: SHIP_TYPE_NAMES[(s.Type as number) ?? 0] ?? 'Vessel',
+        typeName: shipTypeName((s.Type as number) ?? 0),
         destination: ((s.Destination as string) ?? '').trim(),
         callSign: s.CallSign as string,
         imoNumber: s.ImoNumber as number,
@@ -115,12 +131,19 @@ export function useShipTracker(
         draught: s.MaximumStaticDraught as number,
         etaText: formatETA(s.Eta as { Day?: number; Month?: number; Hour?: number; Minute?: number } | undefined) ?? undefined,
       });
-      // Update existing ship entry if present
+      // Update or remove existing ship based on confirmed length
+      const cachedData = staticCache.current.get(mmsi);
       setShips((prev) => {
         const existing = prev.get(mmsi);
         if (!existing) return prev;
         const next = new Map(prev);
-        next.set(mmsi, { ...existing, ...staticCache.current.get(mmsi) } as ShipData);
+        const confirmedLength = cachedData?.length;
+        if (confirmedLength != null && confirmedLength < MIN_SHIP_LENGTH_M) {
+          // Too small — remove from display
+          next.delete(mmsi);
+        } else {
+          next.set(mmsi, { ...existing, ...cachedData } as ShipData);
+        }
         return next;
       });
       return;
@@ -142,7 +165,8 @@ export function useShipTracker(
 
     const cached = staticCache.current.get(mmsi) ?? {};
     const resolvedType = cached.shipType ?? shipType ?? 0;
-    if (resolvedType !== 0 && !INTERESTING_SHIP_TYPES.has(resolvedType)) return;
+    // Only show ships with confirmed length >= 150m
+    if (!cached.length || cached.length < MIN_SHIP_LENGTH_M) return;
 
     const isMoored = (speed ?? 0) < MIN_SHIP_SPEED_KNOTS;
     const { emoji, country } = mmsiToFlag(mmsi);
@@ -155,7 +179,7 @@ export function useShipTracker(
         mmsi,
         name: ((meta.ShipName as string) ?? '').trim() || 'Unknown Vessel',
         shipType: resolvedType,
-        typeName: cached.typeName ?? SHIP_TYPE_NAMES[resolvedType] ?? 'Vessel',
+        typeName: cached.typeName ?? shipTypeName(resolvedType),
         flagEmoji: emoji,
         flagCountry: country,
         speed: speed ?? 0,

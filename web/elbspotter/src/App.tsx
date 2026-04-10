@@ -39,9 +39,9 @@ function SectionHeader({ icon, title, count, color }: {
   icon: string; title: string; count: number; color: 'amber' | 'teal' | 'slate';
 }) {
   return (
-    <div className="flex items-center gap-3 mb-5">
-      <span className="text-2xl">{icon}</span>
-      <h2 className="text-lg font-extrabold text-ink">{title}</h2>
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-lg">{icon}</span>
+      <h2 className="text-sm font-extrabold text-ink uppercase tracking-wide">{title}</h2>
       {count > 0 && (
         <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full text-white ${
           color === 'amber' ? 'bg-ship-amber' : color === 'teal' ? 'bg-beluga-teal' : 'bg-slate-400'
@@ -55,11 +55,13 @@ function SectionHeader({ icon, title, count, color }: {
 
 function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-14 text-center px-8
-                    bg-white rounded-2xl border-2 border-dashed border-blue-100 shadow-card">
-      <div className="text-6xl mb-3">{icon}</div>
-      <div className="text-ink font-bold text-sm">{title}</div>
-      <div className="text-muted text-xs mt-1.5 max-w-xs leading-relaxed">{sub}</div>
+    <div className="flex items-center gap-3 py-5 px-5
+                    bg-white rounded-2xl border border-dashed border-blue-100 shadow-sm">
+      <div className="text-3xl shrink-0">{icon}</div>
+      <div>
+        <div className="text-ink font-bold text-sm">{title}</div>
+        <div className="text-muted text-xs mt-0.5 leading-relaxed">{sub}</div>
+      </div>
     </div>
   );
 }
@@ -136,7 +138,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <NotificationToast notifications={notifications} onDismiss={dismissNotif} />
+      {/* <NotificationToast notifications={notifications} onDismiss={dismissNotif} /> */}
 
       {/* Header — Airbus blue gradient */}
       <header className="sticky top-0 z-40 shadow-lg"
@@ -145,7 +147,24 @@ export default function App() {
           <div className="flex items-center gap-3 flex-wrap">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mr-2">
-              <span className="text-3xl drop-shadow-sm select-none">🌊</span>
+              <svg viewBox="0 0 64 64" className="w-9 h-9 drop-shadow-sm select-none shrink-0">
+                <rect x="8" y="14" width="18" height="36" rx="9" fill="white" opacity="0.9"/>
+                <rect x="10" y="16" width="14" height="32" rx="7" fill="white" opacity="0.3"/>
+                <rect x="38" y="14" width="18" height="36" rx="9" fill="white" opacity="0.9"/>
+                <rect x="40" y="16" width="14" height="32" rx="7" fill="white" opacity="0.3"/>
+                <rect x="22" y="24" width="20" height="8" rx="4" fill="#F5A700"/>
+                <rect x="24" y="26" width="16" height="4" rx="2" fill="#FFD060"/>
+                <ellipse cx="17" cy="16" rx="8" ry="4" fill="white" opacity="0.9"/>
+                <ellipse cx="17" cy="16" rx="6" ry="3" fill="#89b4f0" opacity="0.6"/>
+                <ellipse cx="15" cy="15" rx="2.5" ry="1.5" fill="white" opacity="0.7"/>
+                <ellipse cx="47" cy="16" rx="8" ry="4" fill="white" opacity="0.9"/>
+                <ellipse cx="47" cy="16" rx="6" ry="3" fill="#89b4f0" opacity="0.6"/>
+                <ellipse cx="45" cy="15" rx="2.5" ry="1.5" fill="white" opacity="0.7"/>
+                <ellipse cx="17" cy="16" rx="8" ry="4" fill="none" stroke="#F5A700" strokeWidth="1.5"/>
+                <ellipse cx="47" cy="16" rx="8" ry="4" fill="none" stroke="#F5A700" strokeWidth="1.5"/>
+                <rect x="11" y="48" width="12" height="5" rx="2.5" fill="#F5A700"/>
+                <rect x="41" y="48" width="12" height="5" rx="2.5" fill="#F5A700"/>
+              </svg>
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-white leading-none drop-shadow">
                   Elb<span className="text-yellow-300">spotter</span>
@@ -219,7 +238,7 @@ export default function App() {
       </header>
 
       {/* Main */}
-      <main className="max-w-[1600px] mx-auto px-4 py-7 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <main className="max-w-[1600px] mx-auto px-4 py-7 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
         {/* Ships column */}
         <section>
@@ -241,9 +260,9 @@ export default function App() {
 
           {/* Moored ships in port */}
           {mooredShips.length > 0 && (
-            <div className="mt-8">
+            <div className="mt-5">
               <SectionHeader icon="⚓" title="In Port" count={mooredShips.length} color="slate" />
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {mooredShips.map((ship) => (
                   <ShipCard key={ship.mmsi} ship={ship} />
                 ))}

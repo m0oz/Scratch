@@ -27,6 +27,9 @@ export const INTERESTING_SHIP_TYPES = new Set([
   80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
 ]);
 
+// Minimum ship length to display (metres)
+export const MIN_SHIP_LENGTH_M = 150;
+
 // Minimum speed to be "passing" (not anchored)
 export const MIN_SHIP_SPEED_KNOTS = 1.5;
 
