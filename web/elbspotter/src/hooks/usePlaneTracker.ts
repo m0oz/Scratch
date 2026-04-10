@@ -10,7 +10,11 @@ import {
 } from '../config';
 import { haversineKm } from '../utils/distance';
 
-const OPENSKY_URL = 'https://opensky-network.org/api/states/all';
+const OPENSKY_BASE = 'https://opensky-network.org/api/states/all';
+// OpenSky blocks direct browser requests via CORS from non-opensky-network.org origins.
+// Route through corsproxy.io which fetches server-side and adds Access-Control-Allow-Origin: *.
+// Full target URL must be encodeURIComponent'd so its own & params aren't split by the browser.
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 type StateVector = [
   string,           // 0  icao24
@@ -60,7 +64,8 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
         lamax: String(OPENSKY_BBOX.lamax),
         lomax: String(OPENSKY_BBOX.lomax),
       });
-      const res = await fetch(`${OPENSKY_URL}?${params}`);
+      const targetUrl = `${OPENSKY_BASE}?${params}`;
+      const res = await fetch(`${CORS_PROXY}${encodeURIComponent(targetUrl)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { states?: StateVector[] };
 
