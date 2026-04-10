@@ -6,10 +6,9 @@ import { ShipSilhouette } from './ShipSilhouette';
 
 interface Props {
   ship: ShipData;
-  isNew?: boolean;
 }
 
-export function ShipCard({ ship, isNew }: Props) {
+export function ShipCard({ ship }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
   const destPort = lookupPort(ship.destination);
   const eta = ship.etaText;
@@ -19,19 +18,10 @@ export function ShipCard({ ship, isNew }: Props) {
 
   return (
     <div className={`bg-white rounded-2xl overflow-hidden transition-all duration-300 border ${
-      moored
-        ? 'border-slate-200 shadow-sm'
-        : isNew
-          ? 'border-ship-amber shadow-ship ring-2 ring-ship-amber/30 animate-bounce-in'
-          : 'border-blue-100 shadow-card hover:shadow-card-hover'
+      moored ? 'border-slate-200 shadow-sm' : 'border-blue-100 shadow-card hover:shadow-card-hover'
     }`}>
-      {/* Coloured top stripe */}
       <div className={`h-1 ${
-        moored
-          ? 'bg-gradient-to-r from-slate-300 to-slate-400'
-          : isNew
-            ? 'bg-gradient-to-r from-ship-amber via-yellow-300 to-ship-amber bg-[length:200%] animate-pulse'
-            : 'bg-gradient-to-r from-ship-amber to-ship-dark'
+        moored ? 'bg-gradient-to-r from-slate-300 to-slate-400' : 'bg-gradient-to-r from-ship-amber to-ship-dark'
       }`}/>
 
       <div className="flex gap-3 p-3">
@@ -74,11 +64,6 @@ export function ShipCard({ ship, isNew }: Props) {
             {moored && (
               <span className="text-[10px] font-bold bg-slate-400 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                 At berth
-              </span>
-            )}
-            {isNew && !moored && (
-              <span className="text-[10px] font-bold bg-ship-amber text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide animate-pulse-slow">
-                Passing
               </span>
             )}
             <span className="text-[10px] bg-airbus-pale text-airbus-blue font-semibold px-1.5 py-0.5 rounded-full">

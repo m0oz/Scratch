@@ -13,56 +13,63 @@ import {
 } from '../config';
 import { haversineKm, isHeadingToward, estimateEtaMinutes } from '../utils/distance';
 
-const POLL_SLOW_MS = 5 * 60 * 1000;   // 5 min — no Beluga in range
-const POLL_MEDIUM_MS = 2 * 60 * 1000;  // 2 min — inbound Beluga detected far out
-const POLL_FAST_MS = 60 * 1000;        // 1 min — Beluga within 10 km
+const POLL_SLOW_MS = 5 * 60 * 1000;  // 5 min — no Beluga in range
+const POLL_FAST_MS = 60 * 1000;       // 1 min — Beluga detected or inbound
 const NEARBY_THRESHOLD_KM = 10;
 
-// airplanes.live: community ADS-B network, native CORS support, no API key needed.
-// Endpoint: /v2/point/LAT/LON/RADIUS_NM
-// Response units: altitude = feet, speed = knots, vertical rate = ft/min.
-// We convert to metres/m-per-s internally so PlaneCard display code stays unchanged.
 function adsbUrl(lat: number, lon: number) {
   return `https://api.airplanes.live/v2/point/${lat}/${lon}/${ADSB_RADIUS_NM}`;
 }
 
 interface AdsbAircraft {
-  hex: string;               // ICAO24 lowercase
-  flight?: string;           // callsign, may have trailing spaces
-  r?: string;                // registration
+  hex: string;
+  flight?: string;
   lat?: number;
   lon?: number;
-  alt_baro?: number | 'ground'; // feet, or literal "ground"
-  gs?: number;               // ground speed, knots
-  track?: number;            // true track, degrees
-  baro_rate?: number;        // vertical rate, ft/min
+  alt_baro?: number | 'ground';
+  gs?: number;
+  track?: number;
+  baro_rate?: number;
   on_ground?: boolean;
 }
+
+interface PlaneOpts {
+  lat: number;
+  lon: number;
+  belugaCloseKm: number;
+}
+
+const DEFAULT_OPTS: PlaneOpts = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, belugaCloseKm: 2.0 };
 
 export interface UsePlaneTrackerResult {
   planes: PlaneData[];
   loading: boolean;
   error: string | null;
   lastChecked: Date | null;
-  nextCheckIn: number; // seconds
+  nextCheckIn: number;
 }
 
-export function usePlaneTracker(
-  onNewPlane: (plane: PlaneData) => void,
-  opts: { lat: number; lon: number; belugaCloseKm: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, belugaCloseKm: 2.0 },
-): UsePlaneTrackerResult {
+export function usePlaneTracker(opts: PlaneOpts = DEFAULT_OPTS): UsePlaneTrackerResult {
   const [planes, setPlanes] = useState<Map<string, PlaneData>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [nextCheckIn, setNextCheckIn] = useState(0);
-  const onNewPlaneRef = useRef(onNewPlane);
-  onNewPlaneRef.current = onNewPlane;
   const knownIds = useRef<Set<string>>(new Set());
   const landingNotified = useRef<Set<string>>(new Set());
   const etaNotified = useRef<Set<string>>(new Set());
   const belugaNearby = useRef(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  function currentPollMs() {
+    return belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
+  }
+
+  function notify(title: string, body: string, tag: string) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, tag });
+    }
+  }
 
   const poll = async () => {
     setLoading(true);
@@ -89,8 +96,6 @@ export function usePlaneTracker(
 
         const onGround = ac.on_ground === true || ac.alt_baro === 'ground';
         const altFt = typeof ac.alt_baro === 'number' ? ac.alt_baro : null;
-
-        const isNew = !knownIds.current.has(ac.hex?.toLowerCase() ?? icao24);
         const velocityMs = ac.gs != null ? ac.gs / 1.944 : null;
         const distToFink = haversineKm(FINKENWERDER.lat, FINKENWERDER.lon, lat, lon);
         const inbound = !onGround && ac.track != null && ac.gs != null && ac.gs > 50 &&
@@ -98,11 +103,9 @@ export function usePlaneTracker(
         const eta = inbound ? estimateEtaMinutes(distToFink, velocityMs) : null;
 
         const plane: PlaneData = {
-          icao24: ac.hex?.toLowerCase() ?? icao24,
+          icao24,
           callsign: (ac.flight ?? '').trim() || belugaInfo.registration,
-          originCountry: 'France',
-          lat,
-          lon,
+          lat, lon,
           baroAltitude: altFt != null ? altFt * 0.3048 : null,
           onGround,
           velocity: velocityMs,
@@ -118,39 +121,32 @@ export function usePlaneTracker(
           etaMinutes: eta,
           distanceToFinkenwerder: distToFink,
         };
-        found.set(plane.icao24, plane);
+        found.set(icao24, plane);
 
-        if (isNew) {
-          knownIds.current.add(plane.icao24);
-          setTimeout(() => onNewPlaneRef.current(plane), 0);
-        }
-
-        // Beluga landing notification
+        // Landing notification
         const isLanding = opts.belugaCloseKm > 0 && distance <= opts.belugaCloseKm && (
           onGround ||
           (plane.baroAltitude != null && plane.baroAltitude < LOW_ALTITUDE_THRESHOLD_M) ||
           (plane.verticalRate != null && plane.verticalRate < -1)
         );
-        if (isLanding && !landingNotified.current.has(plane.icao24)) {
-          landingNotified.current.add(plane.icao24);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
-            new Notification(`Beluga ${plane.belugaModel} landing nearby!`, {
-              body: `${plane.registration} · ${distance.toFixed(1)} km away${alt ? ` · ${alt}` : onGround ? ' · on the ground' : ''}`,
-              tag: `beluga-landing-${plane.icao24}`,
-            });
-          }
+        if (isLanding && !landingNotified.current.has(icao24)) {
+          landingNotified.current.add(icao24);
+          const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
+          notify(
+            `Beluga ${plane.belugaModel} landing nearby!`,
+            `${plane.registration} · ${distance.toFixed(1)} km away${alt ? ` · ${alt}` : onGround ? ' · on the ground' : ''}`,
+            `beluga-landing-${icao24}`,
+          );
         }
 
         // ETA notification — ~5 minutes before arrival
-        if (eta != null && eta <= ETA_NOTIFICATION_MINUTES && !etaNotified.current.has(plane.icao24)) {
-          etaNotified.current.add(plane.icao24);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(`Beluga ${plane.belugaModel} arriving in ~${Math.round(eta)} min!`, {
-              body: `${plane.registration} · ${Math.round(distToFink)} km from Finkenwerder`,
-              tag: `beluga-eta-${plane.icao24}`,
-            });
-          }
+        if (eta != null && eta <= ETA_NOTIFICATION_MINUTES && !etaNotified.current.has(icao24)) {
+          etaNotified.current.add(icao24);
+          notify(
+            `Beluga ${plane.belugaModel} arriving in ~${Math.round(eta)} min!`,
+            `${plane.registration} · ${Math.round(distToFink)} km from Finkenwerder`,
+            `beluga-eta-${icao24}`,
+          );
         }
       }
 
@@ -172,11 +168,7 @@ export function usePlaneTracker(
         return next;
       });
 
-      // Adaptive polling: nearby > inbound > idle
-      const anyNearby = [...found.values()].some((p) => p.distance <= NEARBY_THRESHOLD_KM);
-      const anyInbound = [...found.values()].some((p) => p.isInbound);
-      belugaNearby.current = anyNearby || anyInbound;
-
+      belugaNearby.current = [...found.values()].some((p) => p.distance <= NEARBY_THRESHOLD_KM || p.isInbound);
       setLastChecked(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fetch error');
@@ -185,14 +177,6 @@ export function usePlaneTracker(
     }
   };
 
-  function currentPollMs() {
-    // anyNearby (within 10km) is stored in belugaNearby ref (includes inbound)
-    // For 3-tier: if a Beluga is within 10km → fast, if inbound from far → medium, else slow
-    // We simplified by setting belugaNearby = true for both nearby and inbound
-    return belugaNearby.current ? POLL_FAST_MS : POLL_SLOW_MS;
-  }
-
-  // Schedule next poll with dynamic interval
   const scheduleNext = useCallback(() => {
     clearTimeout(pollTimer.current);
     pollTimer.current = setTimeout(async () => {
@@ -202,7 +186,6 @@ export function usePlaneTracker(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Countdown to next poll
   useEffect(() => {
     const interval = setInterval(() => {
       if (!lastChecked) return;

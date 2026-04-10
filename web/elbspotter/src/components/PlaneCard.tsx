@@ -30,7 +30,6 @@ function usePlanePhoto(registration: string) {
 
 interface Props {
   plane: PlaneData;
-  isNew?: boolean;
 }
 
 function timeAgo(ms: number): string {
@@ -56,7 +55,7 @@ function flightPhase(plane: PlaneData): { label: string; bg: string; text: strin
   return         { label: 'Cruising',        bg: 'bg-airbus-pale', text: 'text-airbus-blue',  icon: '→' };
 }
 
-export function PlaneCard({ plane, isNew }: Props) {
+export function PlaneCard({ plane }: Props) {
   const { url: photoUrl, loaded: photoLoaded } = usePlanePhoto(plane.registration);
   const phase      = flightPhase(plane);
   const compass    = plane.trueTrack != null ? compassLabel(plane.trueTrack) : '--';
@@ -81,27 +80,15 @@ export function PlaneCard({ plane, isNew }: Props) {
   const fact = facts[Math.floor(Date.now() / 60_000) % facts.length];
 
   return (
-    <div className={`bg-white rounded-2xl overflow-hidden transition-all duration-300 border ${
-      isNew
-        ? 'border-beluga-teal shadow-beluga ring-2 ring-beluga-teal/30 animate-bounce-in'
-        : 'border-blue-100 shadow-card hover:shadow-card-hover'
-    }`}>
+    <div className="bg-white rounded-2xl overflow-hidden transition-all duration-300 border border-blue-100 shadow-card hover:shadow-card-hover">
       {/* Top stripe */}
-      <div className={`h-1.5 ${isNew
-        ? 'bg-gradient-to-r from-beluga-teal via-green-300 to-beluga-teal bg-[length:200%] animate-pulse'
-        : 'bg-gradient-to-r from-beluga-teal to-beluga-dark'
-      }`}/>
+      <div className="h-1.5 bg-gradient-to-r from-beluga-teal to-beluga-dark"/>
 
       <div className="p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              {isNew && (
-                <span className="text-[10px] font-bold bg-beluga-teal text-white px-2 py-0.5 rounded-full uppercase tracking-wide animate-pulse-slow">
-                  Spotted!
-                </span>
-              )}
               <a href={fr24} target="_blank" rel="noopener noreferrer"
                 className="text-base font-extrabold text-ink hover:text-beluga-teal transition-colors"
                 title="View on FlightRadar24">

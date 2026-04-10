@@ -20,16 +20,6 @@ export const ELBE_BOUNDING_BOX = [
   [53.70, 10.2], // NE [lat, lon]
 ];
 
-// Ship types to track (AIS type codes)
-export const INTERESTING_SHIP_TYPES = new Set([
-  // Passenger / cruise
-  60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
-  // Cargo / container
-  70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
-  // Tanker (large ones)
-  80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
-]);
-
 // Minimum ship length to display (metres)
 export const MIN_SHIP_LENGTH_M = 150;
 
