@@ -50,6 +50,7 @@ function flightPhase(plane: PlaneData): { label: string; bg: string; text: strin
     if (vr >  1) return { label: 'Taking Off', bg: 'bg-beluga-pale', text: 'text-beluga-dark', icon: '⬆' };
     return       { label: 'Low Pass',          bg: 'bg-green-50',   text: 'text-green-700',    icon: '✈' };
   }
+  if (plane.isInbound) return { label: 'Inbound EDHI', bg: 'bg-green-50', text: 'text-green-700', icon: '🎯' };
   if (vr < -2) return { label: 'Descending', bg: 'bg-sky-50',     text: 'text-sky-700',      icon: '↘' };
   if (vr >  2) return { label: 'Climbing',   bg: 'bg-sky-50',     text: 'text-sky-700',      icon: '↗' };
   return         { label: 'Cruising',        bg: 'bg-airbus-pale', text: 'text-airbus-blue',  icon: '→' };
@@ -131,13 +132,23 @@ export function PlaneCard({ plane, isNew }: Props) {
             )}
           </div>
           <div className="flex-1 space-y-2.5">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold ${phase.bg} ${phase.text}`}>
-              <span>{phase.icon}</span> {phase.label}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold ${phase.bg} ${phase.text}`}>
+                <span>{phase.icon}</span> {phase.label}
+              </div>
+              {plane.isInbound && plane.etaMinutes != null && (
+                <div className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-sm font-bold bg-green-50 text-green-700">
+                  ETA ~{Math.round(plane.etaMinutes)} min
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {speedKnots != null   && <Stat label="Speed"    value={`${speedKnots} kn`}/>}
               {plane.trueTrack != null && <Stat label="Heading" value={`${Math.round(plane.trueTrack)}° ${compass}`}/>}
               {altFt != null        && <Stat label="Altitude" value={`${altFt.toLocaleString()} ft`}/>}
+              {plane.distanceToFinkenwerder > 5 && (
+                <Stat label="To EDHI" value={`${Math.round(plane.distanceToFinkenwerder)} km`}/>
+              )}
               {plane.verticalRate != null && Math.abs(plane.verticalRate) > 0.5 && (
                 <Stat label="Vert. rate"
                   value={`${plane.verticalRate > 0 ? '+' : ''}${Math.round(plane.verticalRate * 196.85)} fpm`}/>

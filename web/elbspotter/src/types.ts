@@ -22,6 +22,8 @@ export interface ShipData {
   firstSeen: number;
   lastSeen: number;
   moored: boolean;
+  direction: 'inbound' | 'outbound' | null; // heading into or out of Hamburg port
+  passEtaMinutes: number | null; // estimated minutes until ship passes user location
 }
 
 export interface PlaneData {
@@ -41,6 +43,9 @@ export interface PlaneData {
   timestamp: number;
   firstSeen: number;
   lastSeen: number;
+  isInbound: boolean; // heading toward Finkenwerder
+  etaMinutes: number | null; // estimated minutes to EDHI
+  distanceToFinkenwerder: number; // km to EDHI
 }
 
 export interface AppNotification {

@@ -268,7 +268,7 @@ export default function App() {
             <EmptyState
               icon="🐋"
               title="No Belugas nearby"
-              sub={`All 11 Airbus Belugas are accounted for — none within 15 km right now. Scans every minute.${nextCheckIn > 0 ? ` Next in ${nextCheckIn}s.` : ''}`}
+              sub={`Scanning 280 km for Belugas — none detected right now.${nextCheckIn > 0 ? ` Next scan in ${nextCheckIn}s.` : ''}`}
             />
           ) : (
             <div className="space-y-4">
