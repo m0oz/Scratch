@@ -7,8 +7,11 @@ import {
   ADSB_RADIUS_NM,
   BELUGA_AIRCRAFT,
   VESSEL_TIMEOUT_MS,
+  LOW_ALTITUDE_THRESHOLD_M,
 } from '../config';
 import { haversineKm } from '../utils/distance';
+
+const BELUGA_CLOSE_KM = 2.0;
 
 // airplanes.live: community ADS-B network, native CORS support, no API key needed.
 // Endpoint: /v2/point/LAT/LON/RADIUS_NM
@@ -46,6 +49,7 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
   const onNewPlaneRef = useRef(onNewPlane);
   onNewPlaneRef.current = onNewPlane;
   const knownIds = useRef<Set<string>>(new Set());
+  const landingNotified = useRef<Set<string>>(new Set());
 
   const poll = async () => {
     setLoading(true);
@@ -98,6 +102,23 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
         if (isNew) {
           knownIds.current.add(plane.icao24);
           setTimeout(() => onNewPlaneRef.current(plane), 0);
+        }
+
+        // Beluga landing notification — within 2km, low altitude or on ground
+        const isLanding = distance <= BELUGA_CLOSE_KM && (
+          onGround ||
+          (plane.baroAltitude != null && plane.baroAltitude < LOW_ALTITUDE_THRESHOLD_M) ||
+          (plane.verticalRate != null && plane.verticalRate < -1)
+        );
+        if (isLanding && !landingNotified.current.has(plane.icao24)) {
+          landingNotified.current.add(plane.icao24);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
+            new Notification(`Beluga ${plane.belugaModel} landing nearby!`, {
+              body: `${plane.registration} · ${distance.toFixed(1)} km away${alt ? ` · ${alt}` : onGround ? ' · on the ground' : ''}`,
+              tag: `beluga-landing-${plane.icao24}`,
+            });
+          }
         }
       }
 

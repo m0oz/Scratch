@@ -1,7 +1,32 @@
+import { useEffect, useState } from 'react';
 import { PlaneData } from '../types';
 import { compassLabel } from '../utils/distance';
 import { BelugaSilhouette } from './BelugaSilhouette';
 import { LOW_ALTITUDE_THRESHOLD_M } from '../config';
+
+const photoCache = new Map<string, string | null>();
+
+function usePlanePhoto(registration: string) {
+  const [url, setUrl] = useState<string | null>(photoCache.get(registration) ?? null);
+  const [loaded, setLoaded] = useState(photoCache.has(registration));
+
+  useEffect(() => {
+    if (photoCache.has(registration)) return;
+    fetch(`https://api.planespotters.net/pub/photos/reg/${registration}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const src = data?.photos?.[0]?.thumbnail_large?.src ?? null;
+        photoCache.set(registration, src);
+        setUrl(src);
+      })
+      .catch(() => {
+        photoCache.set(registration, null);
+      })
+      .finally(() => setLoaded(true));
+  }, [registration]);
+
+  return { url, loaded };
+}
 
 interface Props {
   plane: PlaneData;
@@ -31,6 +56,7 @@ function flightPhase(plane: PlaneData): { label: string; bg: string; text: strin
 }
 
 export function PlaneCard({ plane, isNew }: Props) {
+  const { url: photoUrl, loaded: photoLoaded } = usePlanePhoto(plane.registration);
   const phase      = flightPhase(plane);
   const compass    = plane.trueTrack != null ? compassLabel(plane.trueTrack) : '--';
   const speedKnots = plane.velocity  != null ? Math.round(plane.velocity * 1.944) : null;
@@ -97,8 +123,12 @@ export function PlaneCard({ plane, isNew }: Props) {
 
         {/* Beluga graphic + phase */}
         <div className="flex gap-4 items-center mb-3">
-          <div className="w-48 shrink-0 bg-airbus-pale rounded-xl p-2">
-            <BelugaSilhouette model={plane.belugaModel} className="w-full h-auto drop-shadow"/>
+          <div className="w-48 h-28 shrink-0 bg-airbus-pale rounded-xl overflow-hidden flex items-center justify-center">
+            {photoLoaded && photoUrl ? (
+              <img src={photoUrl} alt={plane.registration} className="w-full h-full object-cover"/>
+            ) : (
+              <BelugaSilhouette model={plane.belugaModel} className="w-40 h-auto opacity-50 p-2"/>
+            )}
           </div>
           <div className="flex-1 space-y-2.5">
             <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold ${phase.bg} ${phase.text}`}>
