@@ -55,7 +55,7 @@ export const BELUGA_AIRCRAFT: Record<string, { registration: string; model: 'XL'
 };
 
 // How often to poll airplanes.live (ms)
-export const PLANE_POLL_INTERVAL_MS = 60 * 1000; // 1 minute — no documented rate limit
+export const PLANE_POLL_INTERVAL_MS = 60 * 1000; // 1 minute
 
 // Query radius sent to airplanes.live (nautical miles). 10 nm ≈ 18.5 km > PLANE_DETECTION_RADIUS_KM.
 export const ADSB_RADIUS_NM = 10;
