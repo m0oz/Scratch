@@ -78,7 +78,7 @@ export default function App() {
             {/* Logo */}
             <div className="flex items-center gap-2.5 mr-2">
               <svg viewBox="0 0 64 64" className="w-9 h-9 drop-shadow-sm select-none shrink-0">
-                <g transform="rotate(-45 32 32)">
+                <g transform="rotate(45 32 32)">
                   <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
                   <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
                   <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
