@@ -20,115 +20,98 @@ export function ShipCard({ ship, isNew }: Props) {
   const eta = ship.etaText;
   const compass = compassLabel(ship.course);
   const mt = `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}`;
-
-  const isLarge = ship.length && ship.length >= 200;
   const isCruise = ship.shipType >= 60 && ship.shipType <= 69;
+  const isUltraLarge = ship.length && ship.length >= 300;
 
   return (
-    <div
-      className={`relative rounded-xl border overflow-hidden transition-all duration-500 ${
-        isNew
-          ? 'border-ship-amber bg-navy-800 shadow-lg shadow-ship-amber/20 ring-1 ring-ship-amber/40'
-          : 'border-navy-600 bg-navy-800 hover:border-airbus-sky/60'
-      }`}
-    >
-      {isNew && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-ship-amber to-transparent animate-pulse"/>
-      )}
+    <div className={`bg-white rounded-2xl overflow-hidden transition-all duration-300 border ${
+      isNew
+        ? 'border-ship-amber shadow-ship ring-2 ring-ship-amber/30 animate-bounce-in'
+        : 'border-blue-100 shadow-card hover:shadow-card-hover'
+    }`}>
+      {/* Coloured top stripe */}
+      <div className={`h-1.5 ${isNew
+        ? 'bg-gradient-to-r from-ship-amber via-yellow-300 to-ship-amber bg-[length:200%] animate-pulse'
+        : 'bg-gradient-to-r from-ship-amber to-ship-dark'
+      }`}/>
 
       <div className="p-4">
-        {/* Header */}
+        {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
               {isNew && (
-                <span className="text-xs font-mono bg-ship-amber/20 text-ship-amber border border-ship-amber/40 px-1.5 py-0.5 rounded animate-pulse-slow">
-                  NEW
+                <span className="text-[10px] font-bold bg-ship-amber text-white px-2 py-0.5 rounded-full uppercase tracking-wide animate-pulse-slow">
+                  Now passing!
                 </span>
               )}
-              <a
-                href={mt}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-base font-bold text-white hover:text-airbus-sky transition-colors truncate"
-                title="View on MarineTraffic"
-              >
+              <a href={mt} target="_blank" rel="noopener noreferrer"
+                className="text-base font-extrabold text-ink hover:text-airbus-sky transition-colors truncate"
+                title="View on MarineTraffic">
                 {ship.name || 'Unknown Vessel'}
               </a>
             </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs text-navy-600 bg-navy-700/60 px-1.5 py-0.5 rounded font-mono">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] bg-airbus-pale text-airbus-blue font-semibold px-2 py-0.5 rounded-full">
                 {ship.typeName}
               </span>
+              {isCruise && (
+                <span className="text-[11px] bg-pink-50 text-pink-600 font-semibold px-2 py-0.5 rounded-full">
+                  🛳 Cruise
+                </span>
+              )}
+              {isUltraLarge && (
+                <span className="text-[11px] bg-yellow-50 text-yellow-700 font-semibold px-2 py-0.5 rounded-full">
+                  ⚓ Ultra-large
+                </span>
+              )}
               <span title={ship.flagCountry}>{ship.flagEmoji}</span>
-              <span className="text-xs text-white/40">{ship.flagCountry}</span>
+              <span className="text-[11px] text-muted">{ship.flagCountry}</span>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <div className="text-xl font-bold text-ship-amber">{ship.distance.toFixed(1)}</div>
-            <div className="text-xs text-white/40">km away</div>
+          <div className="text-right shrink-0 bg-ship-pale rounded-xl px-3 py-1.5">
+            <div className="text-xl font-extrabold text-ship-amber leading-none">{ship.distance.toFixed(1)}</div>
+            <div className="text-[10px] text-muted font-semibold">km away</div>
           </div>
         </div>
 
-        {/* Ship image + stats */}
+        {/* Ship graphic + stats */}
         <div className="flex gap-4 items-center mb-3">
-          <div className="w-44 shrink-0">
-            <ShipSilhouette type={ship.shipType} className="w-full h-auto drop-shadow-lg"/>
+          <div className="w-40 shrink-0 bg-airbus-pale rounded-xl p-2">
+            <ShipSilhouette type={ship.shipType} className="w-full h-auto drop-shadow"/>
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm flex-1">
-            <Stat label="Speed" value={`${ship.speed.toFixed(1)} kn`}/>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 flex-1">
+            <Stat label="Speed"  value={`${ship.speed.toFixed(1)} kn`}/>
             <Stat label="Course" value={`${Math.round(ship.course)}° ${compass}`}/>
             {ship.length && <Stat label="Length" value={`${ship.length} m`}/>}
-            {ship.width && <Stat label="Beam" value={`${ship.width} m`}/>}
-            {ship.imoNumber ? <Stat label="IMO" value={String(ship.imoNumber)}/> : null}
-            {ship.callSign && <Stat label="Call" value={ship.callSign}/>}
+            {ship.width  && <Stat label="Beam"   value={`${ship.width} m`}/>}
+            {ship.imoNumber ? <Stat label="IMO"  value={String(ship.imoNumber)}/> : null}
+            {ship.callSign  && <Stat label="Call" value={ship.callSign}/>}
           </div>
         </div>
 
-        {/* Size badge */}
-        {isLarge && (
-          <div className="mb-2 flex gap-1 flex-wrap">
-            <span className="text-xs bg-airbus-blue/30 border border-airbus-blue/50 text-airbus-sky px-2 py-0.5 rounded-full">
-              {isCruise ? '🛳 Cruise Ship' : '📦 Large Freighter'}
-            </span>
-            {ship.length && ship.length >= 300 && (
-              <span className="text-xs bg-ship-amber/20 border border-ship-amber/40 text-ship-amber px-2 py-0.5 rounded-full">
-                ⚓ Ultra-large class
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Route */}
+        {/* Route info */}
         {ship.destination && (
-          <div className="border-t border-navy-700 pt-3">
-            <div className="flex items-start gap-2">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 text-xs text-white/50 mb-1">
-                  <span>DESTINATION</span>
-                  {eta && <span className="text-ship-amber ml-auto">ETA {eta}</span>}
-                </div>
-                <div className="font-semibold text-white truncate">
-                  {destPort ? (
-                    <span>{destPort.flag} {destPort.name}</span>
-                  ) : (
-                    <span>{ship.destination}</span>
-                  )}
-                </div>
-                {destPort && (
-                  <div className="text-xs text-white/50 mt-1 leading-snug">{destPort.description}</div>
-                )}
-              </div>
+          <div className="border-t border-blue-50 pt-3">
+            <div className="flex items-center justify-between text-[11px] text-muted mb-1">
+              <span className="font-bold uppercase tracking-wide">Destination</span>
+              {eta && <span className="font-bold text-ship-amber">ETA {eta}</span>}
+            </div>
+            <div className="font-bold text-ink text-sm mb-1">
+              {destPort ? `${destPort.flag} ${destPort.name}` : ship.destination}
             </div>
             {destPort && (
-              <div className="mt-2 bg-navy-700/60 rounded-lg px-3 py-2 text-xs text-white/60 leading-relaxed border border-navy-600">
+              <p className="text-[11px] text-muted mb-2">{destPort.description}</p>
+            )}
+            {destPort && (
+              <div className="bg-ship-pale border border-yellow-100 rounded-xl px-3 py-2 text-[11px] text-ink/70 leading-relaxed">
                 💡 {destPort.funFact}
               </div>
             )}
           </div>
         )}
 
-        <div className="mt-2 text-xs text-white/25 font-mono">
+        <div className="mt-2.5 text-[10px] text-muted/50 font-mono">
           First seen {timeAgo(ship.firstSeen)} · MMSI {ship.mmsi}
         </div>
       </div>
@@ -139,8 +122,8 @@ export function ShipCard({ ship, isNew }: Props) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-white/40 uppercase tracking-wide">{label}</div>
-      <div className="text-white font-mono text-sm">{value}</div>
+      <div className="text-[10px] text-muted uppercase tracking-wide font-semibold">{label}</div>
+      <div className="text-ink font-mono text-sm font-bold">{value}</div>
     </div>
   );
 }
