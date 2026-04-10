@@ -104,6 +104,7 @@ export default function App() {
   const shipTrackerSettings = {
     lat: settings.lat, lon: settings.lon,
     shipCloseKm: settings.notifyShipClose ? settings.shipCloseKm : 0,
+    minShipLength: settings.minShipLength,
   };
   const belugaTrackerSettings = {
     lat: settings.lat, lon: settings.lon,
