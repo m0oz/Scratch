@@ -62,7 +62,6 @@ export default function App() {
   });
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const notifPermission = useRef<NotificationPermission>('default');
-  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -121,7 +120,6 @@ export default function App() {
     });
   }, []);
 
-  const pendingCount = notifications.filter((n) => !n.dismissed).length;
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -135,24 +133,26 @@ export default function App() {
             {/* Logo */}
             <div className="flex items-center gap-2.5 mr-2">
               <svg viewBox="0 0 64 64" className="w-9 h-9 drop-shadow-sm select-none shrink-0">
-                {/* Lens */}
-                <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
-                <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
-                <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
-                <ellipse cx="16" cy="32" rx="2" ry="10.5" fill="#F5A700"/>
-                {/* First tube */}
-                <rect x="16" y="24" width="16" height="16" rx="2" fill="white" opacity="0.7"/>
-                <rect x="17" y="25.5" width="14" height="13" rx="1.5" fill="white" opacity="0.3"/>
-                <ellipse cx="32" cy="32" rx="2" ry="9" fill="#F5A700"/>
-                {/* Second tube */}
-                <rect x="32" y="25.5" width="14" height="13" rx="2" fill="white" opacity="0.55"/>
-                <rect x="33" y="27" width="12" height="10" rx="1.5" fill="white" opacity="0.2"/>
-                <ellipse cx="46" cy="32" rx="2" ry="8" fill="#F5A700"/>
-                {/* Eyepiece */}
-                <rect x="46" y="26" width="8" height="12" rx="2" fill="white" opacity="0.45"/>
-                <ellipse cx="54" cy="32" rx="1.5" ry="7" fill="#F5A700"/>
-                {/* Highlight */}
-                <line x1="18" y1="26" x2="44" y2="26" stroke="white" strokeWidth="1" opacity="0.4" strokeLinecap="round"/>
+                <g transform="rotate(-45 32 32)">
+                  {/* Lens */}
+                  <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
+                  <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
+                  <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
+                  <ellipse cx="16" cy="32" rx="2" ry="10.5" fill="#F5A700"/>
+                  {/* First tube */}
+                  <rect x="16" y="24" width="16" height="16" rx="2" fill="white" opacity="0.7"/>
+                  <rect x="17" y="25.5" width="14" height="13" rx="1.5" fill="white" opacity="0.3"/>
+                  <ellipse cx="32" cy="32" rx="2" ry="9" fill="#F5A700"/>
+                  {/* Second tube */}
+                  <rect x="32" y="25.5" width="14" height="13" rx="2" fill="white" opacity="0.55"/>
+                  <rect x="33" y="27" width="12" height="10" rx="1.5" fill="white" opacity="0.2"/>
+                  <ellipse cx="46" cy="32" rx="2" ry="8" fill="#F5A700"/>
+                  {/* Eyepiece */}
+                  <rect x="46" y="26" width="8" height="12" rx="2" fill="white" opacity="0.45"/>
+                  <ellipse cx="54" cy="32" rx="1.5" ry="7" fill="#F5A700"/>
+                  {/* Highlight */}
+                  <line x1="18" y1="26" x2="44" y2="26" stroke="white" strokeWidth="1" opacity="0.4" strokeLinecap="round"/>
+                </g>
               </svg>
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-white leading-none drop-shadow">
@@ -168,7 +168,7 @@ export default function App() {
             <div className="flex items-center gap-2 flex-wrap">
               <Pill
                 active={shipConnected}
-                label={shipConnected ? 'AIS live' : apiKey ? 'connecting…' : 'AIS offline'}
+                label={shipConnected ? 'AIS live' : settings.apiKey ? 'connecting…' : 'AIS offline'}
                 icon="🚢"
               />
               <Pill
@@ -188,42 +188,10 @@ export default function App() {
               {(shipError || planeError) && (
                 <span className="text-xs text-red-300 font-mono">{shipError || planeError}</span>
               )}
-              <button
-                onClick={() => setShowHistory((v) => !v)}
-                className="relative flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors font-semibold"
-              >
-                🕐 Log
-                {pendingCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-yellow-400 text-navy-900 text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
-                    {pendingCount > 9 ? '9+' : pendingCount}
-                  </span>
-                )}
-              </button>
               <SetupModal settings={settings} onSave={setSettings} />
             </div>
           </div>
         </div>
-
-        {/* Event log drawer */}
-        {showHistory && (
-          <div className="border-t border-white/10 bg-navy-900/95 backdrop-blur px-5 py-3 max-h-44 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <p className="text-white/30 text-xs text-center py-3">No events yet — waiting for vessels…</p>
-            ) : (
-              <div className="space-y-1">
-                {notifications.slice(0, 20).map((n) => (
-                  <div key={n.id} className="flex items-start gap-2 text-xs">
-                    <span className="shrink-0 text-white/30 font-mono w-11">
-                      {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="shrink-0">{n.type === 'ship' ? '🚢' : '🐋'}</span>
-                    <span className="text-white/60 leading-snug">{n.title} — {n.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </header>
 
       {/* Main */}
