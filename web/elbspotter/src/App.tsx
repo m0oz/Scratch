@@ -96,18 +96,10 @@ export default function App() {
     }
   }, []);
 
-  const handleNewShip = useCallback((ship: ShipData) => {
-    const compass = compassLabel(ship.course);
-    addNotification({
-      id: `ship-${ship.mmsi}-${Date.now()}`,
-      type: 'ship',
-      title: `${ship.name} spotted on the Elbe!`,
-      message: `${ship.typeName} · ${ship.distance.toFixed(1)} km away · ${ship.speed.toFixed(1)} kn heading ${compass}${ship.destination ? ` → ${ship.destination}` : ''}`,
-      timestamp: Date.now(),
-      vesselId: ship.mmsi,
-      dismissed: false,
-    });
-  }, [addNotification]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleNewShip = useCallback((_ship: ShipData) => {
+    // Close-range ship notifications are handled inside useShipTracker
+  }, []);
 
   const handleNewPlane = useCallback((plane: PlaneData) => {
     const alt = plane.baroAltitude != null ? `${Math.round(plane.baroAltitude * 3.281).toLocaleString()} ft` : '';
@@ -148,22 +140,24 @@ export default function App() {
             {/* Logo */}
             <div className="flex items-center gap-2.5 mr-2">
               <svg viewBox="0 0 64 64" className="w-9 h-9 drop-shadow-sm select-none shrink-0">
-                <rect x="8" y="14" width="18" height="36" rx="9" fill="white" opacity="0.9"/>
-                <rect x="10" y="16" width="14" height="32" rx="7" fill="white" opacity="0.3"/>
-                <rect x="38" y="14" width="18" height="36" rx="9" fill="white" opacity="0.9"/>
-                <rect x="40" y="16" width="14" height="32" rx="7" fill="white" opacity="0.3"/>
-                <rect x="22" y="24" width="20" height="8" rx="4" fill="#F5A700"/>
-                <rect x="24" y="26" width="16" height="4" rx="2" fill="#FFD060"/>
-                <ellipse cx="17" cy="16" rx="8" ry="4" fill="white" opacity="0.9"/>
-                <ellipse cx="17" cy="16" rx="6" ry="3" fill="#89b4f0" opacity="0.6"/>
-                <ellipse cx="15" cy="15" rx="2.5" ry="1.5" fill="white" opacity="0.7"/>
-                <ellipse cx="47" cy="16" rx="8" ry="4" fill="white" opacity="0.9"/>
-                <ellipse cx="47" cy="16" rx="6" ry="3" fill="#89b4f0" opacity="0.6"/>
-                <ellipse cx="45" cy="15" rx="2.5" ry="1.5" fill="white" opacity="0.7"/>
-                <ellipse cx="17" cy="16" rx="8" ry="4" fill="none" stroke="#F5A700" strokeWidth="1.5"/>
-                <ellipse cx="47" cy="16" rx="8" ry="4" fill="none" stroke="#F5A700" strokeWidth="1.5"/>
-                <rect x="11" y="48" width="12" height="5" rx="2.5" fill="#F5A700"/>
-                <rect x="41" y="48" width="12" height="5" rx="2.5" fill="#F5A700"/>
+                {/* Lens */}
+                <ellipse cx="12" cy="32" rx="5" ry="10" fill="white" opacity="0.85"/>
+                <ellipse cx="12" cy="32" rx="3.5" ry="8" fill="#89b4f0" opacity="0.4"/>
+                <ellipse cx="11" cy="29" rx="1.5" ry="3" fill="white" opacity="0.5" transform="rotate(-10 11 29)"/>
+                <ellipse cx="16" cy="32" rx="2" ry="10.5" fill="#F5A700"/>
+                {/* First tube */}
+                <rect x="16" y="24" width="16" height="16" rx="2" fill="white" opacity="0.7"/>
+                <rect x="17" y="25.5" width="14" height="13" rx="1.5" fill="white" opacity="0.3"/>
+                <ellipse cx="32" cy="32" rx="2" ry="9" fill="#F5A700"/>
+                {/* Second tube */}
+                <rect x="32" y="25.5" width="14" height="13" rx="2" fill="white" opacity="0.55"/>
+                <rect x="33" y="27" width="12" height="10" rx="1.5" fill="white" opacity="0.2"/>
+                <ellipse cx="46" cy="32" rx="2" ry="8" fill="#F5A700"/>
+                {/* Eyepiece */}
+                <rect x="46" y="26" width="8" height="12" rx="2" fill="white" opacity="0.45"/>
+                <ellipse cx="54" cy="32" rx="1.5" ry="7" fill="#F5A700"/>
+                {/* Highlight */}
+                <line x1="18" y1="26" x2="44" y2="26" stroke="white" strokeWidth="1" opacity="0.4" strokeLinecap="round"/>
               </svg>
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-white leading-none drop-shadow">
@@ -331,7 +325,7 @@ export default function App() {
 
       <footer className="py-4 px-6 text-center">
         <p className="text-xs text-muted/50 font-mono">
-          Elbspotter · AISStream.io · airplanes.live · Hamburg Finkenwerder 🌊
+          Elbspotter by Alba · AISStream.io · airplanes.live · Hamburg Finkenwerder 🌊
         </p>
       </footer>
     </div>

@@ -30,6 +30,9 @@ export const INTERESTING_SHIP_TYPES = new Set([
 // Minimum ship length to display (metres)
 export const MIN_SHIP_LENGTH_M = 150;
 
+// Distance at which a close-range notification fires (km)
+export const SHIP_CLOSE_RADIUS_KM = 0.5;
+
 // Minimum speed to be "passing" (not anchored)
 export const MIN_SHIP_SPEED_KNOTS = 1.5;
 
