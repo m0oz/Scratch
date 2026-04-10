@@ -11,13 +11,13 @@ import {
 } from '../config';
 import { haversineKm } from '../utils/distance';
 
-const BELUGA_CLOSE_KM = 2.0;
-
 // airplanes.live: community ADS-B network, native CORS support, no API key needed.
 // Endpoint: /v2/point/LAT/LON/RADIUS_NM
 // Response units: altitude = feet, speed = knots, vertical rate = ft/min.
 // We convert to metres/m-per-s internally so PlaneCard display code stays unchanged.
-const ADSB_URL = `https://api.airplanes.live/v2/point/${MY_LOCATION.lat}/${MY_LOCATION.lon}/${ADSB_RADIUS_NM}`;
+function adsbUrl(lat: number, lon: number) {
+  return `https://api.airplanes.live/v2/point/${lat}/${lon}/${ADSB_RADIUS_NM}`;
+}
 
 interface AdsbAircraft {
   hex: string;               // ICAO24 lowercase
@@ -40,7 +40,10 @@ export interface UsePlaneTrackerResult {
   nextCheckIn: number; // seconds
 }
 
-export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlaneTrackerResult {
+export function usePlaneTracker(
+  onNewPlane: (plane: PlaneData) => void,
+  opts: { lat: number; lon: number; belugaCloseKm: number } = { lat: MY_LOCATION.lat, lon: MY_LOCATION.lon, belugaCloseKm: 2.0 },
+): UsePlaneTrackerResult {
   const [planes, setPlanes] = useState<Map<string, PlaneData>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +58,7 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(ADSB_URL);
+      const res = await fetch(adsbUrl(opts.lat, opts.lon));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { ac?: AdsbAircraft[] };
 
@@ -71,7 +74,7 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
         const lon = ac.lon;
         if (lat == null || lon == null) continue;
 
-        const distance = haversineKm(MY_LOCATION.lat, MY_LOCATION.lon, lat, lon);
+        const distance = haversineKm(opts.lat, opts.lon, lat, lon);
         if (distance > PLANE_DETECTION_RADIUS_KM) continue;
 
         const onGround = ac.on_ground === true || ac.alt_baro === 'ground';
@@ -104,8 +107,8 @@ export function usePlaneTracker(onNewPlane: (plane: PlaneData) => void): UsePlan
           setTimeout(() => onNewPlaneRef.current(plane), 0);
         }
 
-        // Beluga landing notification — within 2km, low altitude or on ground
-        const isLanding = distance <= BELUGA_CLOSE_KM && (
+        // Beluga landing notification
+        const isLanding = opts.belugaCloseKm > 0 && distance <= opts.belugaCloseKm && (
           onGround ||
           (plane.baroAltitude != null && plane.baroAltitude < LOW_ALTITUDE_THRESHOLD_M) ||
           (plane.verticalRate != null && plane.verticalRate < -1)
