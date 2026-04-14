@@ -184,6 +184,38 @@ export function SetupModal({ settings, onSave }: Props) {
             </div>
           </Section>
 
+          {/* Test notification */}
+          <button
+            onClick={() => {
+              if (!('Notification' in window)) {
+                alert('Notifications not supported in this browser');
+                return;
+              }
+              if (Notification.permission === 'granted') {
+                new Notification('Elbspotter test', {
+                  body: 'Notifications are working!',
+                  tag: 'test',
+                });
+              } else if (Notification.permission === 'denied') {
+                alert('Notifications are blocked. Enable them in your browser settings.');
+              } else {
+                Notification.requestPermission().then((p) => {
+                  if (p === 'granted') {
+                    new Notification('Elbspotter test', {
+                      body: 'Notifications are working!',
+                      tag: 'test',
+                    });
+                  } else {
+                    alert('Permission denied.');
+                  }
+                });
+              }
+            }}
+            className="w-full text-xs font-semibold text-airbus-sky hover:text-airbus-blue border border-blue-100 rounded-xl py-2 transition-colors"
+          >
+            Send test notification
+          </button>
+
           {/* Buttons */}
           <div className="flex gap-3 pt-1">
             <button

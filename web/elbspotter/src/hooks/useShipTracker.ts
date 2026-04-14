@@ -48,6 +48,13 @@ function shipDirection(course: number, speed: number): 'inbound' | 'outbound' | 
   return course >= lo && course <= hi ? 'inbound' : 'outbound';
 }
 
+/** A ship qualifies if length >= threshold OR has a commercial AIS type (60-89). */
+function isLargeShip(length: number | undefined, shipType: number, minLength: number): boolean {
+  if (length != null && length >= minLength) return true;
+  // Commercial vessel types are always large — allow even before length confirmed
+  return shipType >= 60 && shipType <= 89;
+}
+
 interface ShipOpts {
   lat: number;
   lon: number;
@@ -186,7 +193,8 @@ export function useShipTracker(
       });
 
       const cached = staticCache.current.get(mmsi)!;
-      const isLarge = length != null && length >= opts.minShipLength;
+      const resolvedType = cached.shipType ?? 0;
+      const isLarge = isLargeShip(length, resolvedType, opts.minShipLength);
 
       setShips((prev) => {
         const existing = prev.get(mmsi);
@@ -224,7 +232,8 @@ export function useShipTracker(
     positionCache.current.set(mmsi, { lat, lon, speed, course, distance, name: shipName, shipType });
 
     const cached = staticCache.current.get(mmsi) ?? {};
-    if (!cached.length || cached.length < opts.minShipLength) return;
+    const resolvedType = cached.shipType ?? shipType ?? 0;
+    if (!isLargeShip(cached.length, resolvedType, opts.minShipLength)) return;
 
     setShips((prev) => {
       const existing = prev.get(mmsi);
