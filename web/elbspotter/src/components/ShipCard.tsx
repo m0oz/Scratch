@@ -13,7 +13,7 @@ export function ShipCard({ ship }: Props) {
   const destPort = lookupPort(ship.destination);
   const eta = ship.etaText;
   const compass = compassLabel(ship.course);
-  const mt = `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}`;
+  const mt = `https://www.marinetraffic.com/en/ais/index/search/all/keyword:${ship.mmsi}`;
   const moored = ship.moored;
 
   return (
