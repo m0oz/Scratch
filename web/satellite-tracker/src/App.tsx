@@ -251,26 +251,30 @@ function Layout(props: {
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0,1fr) 380px',
-        gridTemplateRows: '100vh',
-        gap: 0,
+        display: 'flex',
+        flexDirection: 'row',
         height: '100vh',
+        minHeight: '100vh',
+        width: '100%',
         background: 'radial-gradient(circle at 50% -20%, #0d1638 0%, #04050d 60%)',
       }}
     >
-      <SkyView
-        observer={observer}
-        positions={positions}
-        when={now}
-        hovered={hovered}
-        onHover={onHover}
-        cleanupActive={cleanupActive}
-        cleanedIds={cleanedIds}
-        onCleaned={onCleaned}
-      />
+      <div style={{ flex: '1 1 auto', minWidth: 0, minHeight: 0, position: 'relative' }}>
+        <SkyView
+          observer={observer}
+          positions={positions}
+          when={now}
+          hovered={hovered}
+          onHover={onHover}
+          cleanupActive={cleanupActive}
+          cleanedIds={cleanedIds}
+          onCleaned={onCleaned}
+        />
+      </div>
       <aside
         style={{
+          flex: '0 0 380px',
+          width: 380,
           padding: '24px 24px 32px',
           borderLeft: '1px solid rgba(255,255,255,0.06)',
           background: 'rgba(8,10,22,0.65)',
