@@ -1,4 +1,14 @@
-import * as satellite from 'satellite.js'
+import {
+  degreesToRadians,
+  radiansToDegrees,
+  ecfToLookAngles,
+  eciToEcf,
+  eciToGeodetic,
+  gstime,
+  propagate,
+  twoline2satrec,
+  type EciVec3,
+} from 'satellite.js'
 import type { GarbageEstimate, LatLon, SatFamily, SatPosition, SatRecord } from './types'
 
 // CelesTrak group catalogues. We fetch a few groups so the night sky has a good mix
@@ -114,34 +124,33 @@ export function computeOverhead(
   when: Date
 ): SatPosition[] {
   const obsGd = {
-    latitude: satellite.degreesToRadians(observer.latitude),
-    longitude: satellite.degreesToRadians(observer.longitude),
-    height: (observer.altitudeKm ?? 0),
+    latitude: degreesToRadians(observer.latitude),
+    longitude: degreesToRadians(observer.longitude),
+    height: observer.altitudeKm ?? 0,
   }
-  const gmst = satellite.gstime(when)
+  const gmst = gstime(when)
   const sun = sunEciKm(when)
 
   const out: SatPosition[] = []
   for (const rec of catalog) {
-    let satrec
     try {
-      satrec = satellite.twoline2satrec(rec.tle1, rec.tle2)
+      const satrec = twoline2satrec(rec.tle1, rec.tle2)
+      const pv = propagate(satrec, when)
+      if (!pv || !pv.position || typeof pv.position === 'boolean') continue
+      const eci = pv.position as EciVec3<number>
+      const ecf = eciToEcf(eci, gmst)
+      const look = ecfToLookAngles(obsGd, ecf)
+      const elDeg = radiansToDegrees(look.elevation)
+      const azDeg = (radiansToDegrees(look.azimuth) + 360) % 360
+      const rangeKm = look.rangeSat
+      const geo = eciToGeodetic(eci, gmst)
+      const heightKm = geo.height
+      if (!isFinite(elDeg) || !isFinite(azDeg)) continue
+      const sunlit = isSunlit(eci, sun)
+      out.push({ rec, azimuth: azDeg, elevation: elDeg, rangeKm, heightKm, sunlit })
     } catch {
-      continue
+      // One bad record shouldn't take down the whole sky view.
     }
-    const pv = satellite.propagate(satrec, when)
-    if (!pv || !pv.position || typeof pv.position === 'boolean') continue
-    const eci = pv.position as satellite.EciVec3<number>
-    const ecf = satellite.eciToEcf(eci, gmst)
-    const look = satellite.ecfToLookAngles(obsGd, ecf)
-    const elDeg = satellite.radiansToDegrees(look.elevation)
-    const azDeg = (satellite.radiansToDegrees(look.azimuth) + 360) % 360
-    const rangeKm = look.rangeSat
-    const geo = satellite.eciToGeodetic(eci, gmst)
-    const heightKm = geo.height
-    if (!isFinite(elDeg) || !isFinite(azDeg)) continue
-    const sunlit = isSunlit(eci, sun)
-    out.push({ rec, azimuth: azDeg, elevation: elDeg, rangeKm, heightKm, sunlit })
   }
   return out
 }
