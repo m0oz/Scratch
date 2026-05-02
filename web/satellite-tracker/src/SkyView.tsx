@@ -84,7 +84,10 @@ export function SkyView({
 
     const draw = () => {
       const dpr = window.devicePixelRatio || 1
-      const size = Math.min(wrap.clientWidth, wrap.clientHeight)
+      const size = Math.max(
+        40,
+        Math.min(wrap.clientWidth || 0, wrap.clientHeight || 0)
+      )
       canvas.width = size * dpr
       canvas.height = size * dpr
       canvas.style.width = `${size}px`
@@ -94,7 +97,7 @@ export function SkyView({
 
       const cx = size / 2
       const cy = size / 2
-      const R = size / 2 - 10
+      const R = Math.max(1, size / 2 - 10)
 
       // Sky gradient (deep blue → near-black at zenith).
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
