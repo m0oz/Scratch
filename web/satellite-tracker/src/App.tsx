@@ -1,4 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+
+function useNarrowViewport(breakpoint = 720): boolean {
+  const [narrow, setNarrow] = useState<boolean>(() =>
+    typeof window === 'undefined' ? false : window.innerWidth < breakpoint
+  )
+  useEffect(() => {
+    const check = () => setNarrow(window.innerWidth < breakpoint)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [breakpoint])
+  return narrow
+}
 import { SkyView } from './SkyView'
 import { classifyGarbage, computeOverhead, loadCatalog } from './satellites'
 import type { GarbageEstimate, LatLon, SatPosition, SatRecord } from './types'
@@ -242,6 +255,7 @@ function Layout(props: {
     onToggleCleanup,
     onResetCleanup,
   } = props
+  const narrow = useNarrowViewport()
 
   const garbagePct =
     garbage.total > 0
@@ -252,14 +266,23 @@ function Layout(props: {
     <div
       style={{
         display: 'flex',
-        flexDirection: 'row',
-        height: '100vh',
+        flexDirection: narrow ? 'column' : 'row',
         minHeight: '100vh',
         width: '100%',
         background: 'radial-gradient(circle at 50% -20%, #0d1638 0%, #04050d 60%)',
       }}
     >
-      <div style={{ flex: '1 1 auto', minWidth: 0, minHeight: 0, position: 'relative' }}>
+      <div
+        style={{
+          flex: narrow ? '0 0 auto' : '1 1 auto',
+          minWidth: 0,
+          minHeight: 0,
+          position: 'relative',
+          width: narrow ? '100%' : 'auto',
+          height: narrow ? '100vw' : '100vh',
+          maxHeight: narrow ? '100vw' : '100vh',
+        }}
+      >
         <SkyView
           observer={observer}
           positions={positions}
@@ -273,13 +296,15 @@ function Layout(props: {
       </div>
       <aside
         style={{
-          flex: '0 0 380px',
-          width: 380,
+          flex: narrow ? '1 1 auto' : '0 0 380px',
+          width: narrow ? '100%' : 380,
           padding: '24px 24px 32px',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
+          borderLeft: narrow ? 'none' : '1px solid rgba(255,255,255,0.06)',
+          borderTop: narrow ? '1px solid rgba(255,255,255,0.06)' : 'none',
           background: 'rgba(8,10,22,0.65)',
           backdropFilter: 'blur(8px)',
-          overflowY: 'auto',
+          overflowY: narrow ? 'visible' : 'auto',
+          boxSizing: 'border-box',
         }}
       >
         <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.55 }}>
