@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react'
 import { NAMES, type Name, unseal } from './draw'
 import { Snow } from './Snow'
 
-type Step = { kind: 'pick' } | { kind: 'confirm'; name: Name } | { kind: 'reveal'; name: Name; opened: boolean }
+type Phase = 'sealed' | 'shaking' | 'breaking' | 'opening' | 'open'
+type Step = { kind: 'pick' } | { kind: 'confirm'; name: Name } | { kind: 'reveal'; name: Name; phase: Phase }
+
+// How long each phase of the letter opening lasts before the next begins (ms).
+const NEXT: Partial<Record<Phase, [Phase, number]>> = {
+  shaking: ['breaking', 1300],
+  breaking: ['opening', 900],
+  opening: ['open', 1300],
+}
 
 const STORE_KEY = 'wichtelmarkt.me'
 
@@ -29,8 +37,16 @@ function save(name: Name | null) {
 export default function App() {
   const [step, setStep] = useState<Step>(() => {
     const me = load()
-    return me ? { kind: 'reveal', name: me, opened: false } : { kind: 'pick' }
+    return me ? { kind: 'reveal', name: me, phase: 'sealed' } : { kind: 'pick' }
   })
+
+  const phase = step.kind === 'reveal' ? step.phase : null
+  useEffect(() => {
+    const next = phase && NEXT[phase]
+    if (!next) return
+    const id = setTimeout(() => setStep((s) => (s.kind === 'reveal' ? { ...s, phase: next[0] } : s)), next[1])
+    return () => clearTimeout(id)
+  }, [phase])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -77,7 +93,7 @@ export default function App() {
                 className="btn btn-gold"
                 onClick={() => {
                   save(step.name)
-                  setStep({ kind: 'reveal', name: step.name, opened: false })
+                  setStep({ kind: 'reveal', name: step.name, phase: 'sealed' })
                 }}
               >
                 Ja, ich schwöre es
@@ -92,21 +108,36 @@ export default function App() {
         {step.kind === 'reveal' && (
           <section className="parchment" key="reveal">
             <h2>Sei gegrüßt, {step.name}!</h2>
-            {!step.opened ? (
+            {step.phase !== 'open' ? (
               <>
-                <p className="lead">Ein versiegelter Brief wartet auf dich. Brich das Siegel, wenn niemand über deine Schulter blickt.</p>
-                <button className="letter" onClick={() => setStep({ ...step, opened: true })} aria-label="Siegel brechen">
+                <p className="lead">
+                  {step.phase === 'sealed'
+                    ? 'Ein versiegelter Brief wartet auf dich. Brich das Siegel, wenn niemand über deine Schulter blickt.'
+                    : 'Das Siegel bebt …'}
+                </p>
+                <button
+                  className={`letter phase-${step.phase}`}
+                  onClick={() => step.phase === 'sealed' && setStep({ ...step, phase: 'shaking' })}
+                  disabled={step.phase !== 'sealed'}
+                  aria-label="Siegel brechen"
+                >
+                  <span className="letter-glow" />
+                  <span className="letter-rays" />
                   <span className="letter-flap" />
-                  <span className="seal">
-                    <span className="seal-heart">♥</span>
-                  </span>
-                  <span className="letter-hint">Siegel brechen</span>
+                  <span className="seal seal-left"><span className="seal-heart">♥</span></span>
+                  <span className="seal seal-right"><span className="seal-heart">♥</span></span>
+                  {step.phase === 'sealed' && <span className="letter-hint">Siegel brechen</span>}
                 </button>
               </>
             ) : (
               <div className="scroll">
+                <Sparkles />
                 <p className="scroll-intro">Das Los hat entschieden. Du beschenkst</p>
-                <p className="target">{unseal(step.name)}</p>
+                <p className="target" aria-label={unseal(step.name)}>
+                  {[...unseal(step.name)].map((c, i) => (
+                    <span key={i} style={{ animationDelay: `${0.5 + i * 0.18}s` }}>{c}</span>
+                  ))}
+                </p>
                 <p className="scroll-outro">Hüte dieses Geheimnis wie einen Schatz ✦</p>
               </div>
             )}
@@ -127,6 +158,31 @@ export default function App() {
         </footer>
       </main>
     </>
+  )
+}
+
+function Sparkles() {
+  const glyphs = ['✦', '♥', '❄', '✧', '★']
+  return (
+    <div className="sparkles" aria-hidden="true">
+      {Array.from({ length: 22 }, (_, i) => {
+        const angle = (i / 22) * Math.PI * 2
+        const dist = 110 + (i % 4) * 35
+        return (
+          <span
+            key={i}
+            style={{
+              ['--dx' as string]: `${Math.cos(angle) * dist}px`,
+              ['--dy' as string]: `${Math.sin(angle) * dist}px`,
+              animationDelay: `${(i % 5) * 0.06}s`,
+              color: i % 3 === 0 ? '#b5485c' : '#d9a441',
+            }}
+          >
+            {glyphs[i % glyphs.length]}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
