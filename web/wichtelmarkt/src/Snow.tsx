@@ -33,16 +33,20 @@ export function Snow() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       const count = Math.round(Math.min(220, (w * h) / 7000))
       flakes = Array.from({ length: count }, () => make())
+      // Resizing the canvas wipes it; with reduced motion no loop would redraw it.
+      if (reduced) draw(0, false)
     }
 
-    const tick = (t: number) => {
+    const draw = (t: number, move: boolean) => {
       ctx.clearRect(0, 0, w, h)
       for (const f of flakes) {
-        f.y += f.vy * (0.6 + f.r / 3)
-        f.x += Math.sin(t / 1400 + f.phase) * f.drift * 0.5
-        if (f.y > h + 10) Object.assign(f, make(true))
-        if (f.x > w + 10) f.x = -10
-        if (f.x < -10) f.x = w + 10
+        if (move) {
+          f.y += f.vy * (0.6 + f.r / 3)
+          f.x += Math.sin(t / 1400 + f.phase) * f.drift * 0.5
+          if (f.y > h + 10) Object.assign(f, make(true))
+          if (f.x > w + 10) f.x = -10
+          if (f.x < -10) f.x = w + 10
+        }
         ctx.beginPath()
         ctx.fillStyle = `rgba(255, 252, 245, ${f.o})`
         ctx.shadowColor = 'rgba(255,255,255,0.8)'
@@ -50,12 +54,16 @@ export function Snow() {
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2)
         ctx.fill()
       }
-      if (!reduced) raf = requestAnimationFrame(tick)
+    }
+
+    const tick = (t: number) => {
+      draw(t, true)
+      raf = requestAnimationFrame(tick)
     }
 
     resize()
     window.addEventListener('resize', resize)
-    raf = requestAnimationFrame(tick)
+    if (!reduced) raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
