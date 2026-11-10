@@ -1,12 +1,12 @@
-// Generated once with a cryptographically random derangement (nobody draws themselves).
+// Generated once with a cryptographically random derangement (nobody draws themselves, Mo never draws Cara).
 // Targets are lightly scrambled so a glance at the source does not spoil the surprise.
 export const NAMES = ["Mo","Cara","Paul","Maya"] as const
 export type Name = (typeof NAMES)[number]
 
 const SEALED: Record<Name, string> = {
-  "Mo": "NMH3zw==",
-  "Cara": "PfPfzA==",
-  "Paul": "N/PUyg==",
+  "Mo": "J8Hwwg==",
+  "Cara": "IPPTwQ==",
+  "Paul": "OfPfyg==",
   "Maya": "Ov0="
 }
 
